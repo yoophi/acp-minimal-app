@@ -7,7 +7,7 @@ mod ports;
 use inbound::tauri_commands::{
     cancel_agent_run, create_git_worktree, create_project, delete_git_worktree, delete_project,
     list_agents, list_git_branches, list_git_remotes, list_git_worktrees, list_projects,
-    respond_agent_permission, start_agent_run, update_project,
+    respond_agent_permission, send_prompt_to_run, start_agent_run, update_project,
 };
 use infrastructure::agent_session_registry::AppState;
 use tauri::Manager;
@@ -39,6 +39,7 @@ pub fn run() {
             list_agents,
             start_agent_run,
             cancel_agent_run,
+            send_prompt_to_run,
             respond_agent_permission
         ])
         .run(tauri::generate_context!())
