@@ -1,6 +1,6 @@
-use std::hash::{Hash, Hasher};
-
 use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
+use sha2::{Digest, Sha256};
+use std::{sync::mpsc, time::Duration};
 use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 
 /// macOS 네이티브 탭 그룹 식별자. 같은 식별자의 세션 창끼리 탭으로 묶인다.
@@ -10,10 +10,16 @@ const TABBING_IDENTIFIER: &str = "acp-session";
 /// 윈도우 레이블은 `[a-zA-Z0-9-/:_]`만 허용하므로 경로를 직접 쓰지 않고 해시하며,
 /// 결정적이므로 같은 worktree는 항상 같은 레이블 → 중복 창 생성을 막는다.
 pub fn session_label(project_id: &str, worktree_path: &str) -> String {
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    project_id.hash(&mut hasher);
-    worktree_path.hash(&mut hasher);
-    format!("session-{}", hasher.finish())
+    let mut hasher = Sha256::new();
+    hasher.update(project_id.as_bytes());
+    hasher.update([0]);
+    hasher.update(worktree_path.as_bytes());
+    let digest = hasher.finalize();
+    let hash_prefix = digest[..12]
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
+    format!("session-{hash_prefix}")
 }
 
 /// 해당 레이블의 창이 살아 있으면 포커스하고 `true`를 반환한다.
@@ -26,10 +32,11 @@ fn focus_if_open(app: &AppHandle, label: &str) -> bool {
 }
 
 /// 세션 창이 로드할 URL. HashRouter이므로 `#` 뒤가 라우트가 된다.
-/// worktree_path는 `decodeURIComponent`로 복원되도록 퍼센트 인코딩한다.
+/// worktree path는 route segment가 아니라 query string에 넣어 `/`, `#`, `%` 같은
+/// 경로 문자가 router matching에 영향을 주지 않도록 한다.
 fn session_url(project_id: &str, worktree_path: &str) -> WebviewUrl {
     let encoded_path = utf8_percent_encode(worktree_path, NON_ALPHANUMERIC).to_string();
-    WebviewUrl::App(format!("index.html#/session/{project_id}/{encoded_path}").into())
+    WebviewUrl::App(format!("index.html#/session/{project_id}?worktreePath={encoded_path}").into())
 }
 
 /// worktree 세션을 새 창 또는 새 탭으로 연다. 이미 열려 있으면 그 창을 포커스한다.
@@ -48,13 +55,12 @@ pub fn open_session_window(
 
     #[cfg(target_os = "macos")]
     if mode == "tab" {
-        open_as_tab(
+        return open_as_tab(
             app,
             label,
             project_id.to_string(),
             worktree_path.to_string(),
         );
-        return Ok(());
     }
 
     // 비-macOS에서 "tab"은 새 창과 동일하게 동작한다.
@@ -93,33 +99,43 @@ fn build_window(
 /// 기존 세션 창이 없으면(첫 탭) 그냥 새 창으로 열려 탭 그룹의 시작점이 된다.
 /// 탭이 2개 이상이면 탭바는 macOS가 자동으로 표시한다. NSWindow API는 메인 스레드 전용.
 #[cfg(target_os = "macos")]
-fn open_as_tab(app: &AppHandle, label: String, project_id: String, worktree_path: String) {
+fn open_as_tab(
+    app: &AppHandle,
+    label: String,
+    project_id: String,
+    worktree_path: String,
+) -> Result<(), String> {
     use objc2_app_kit::{NSWindow, NSWindowOrderingMode};
 
     let app = app.clone();
-    let _ = app.clone().run_on_main_thread(move || {
-        // 새 창을 만들기 전에 기준이 될 기존 세션 창을 먼저 찾는다.
-        let base_window = app
-            .webview_windows()
-            .into_iter()
-            .find(|(existing_label, _)| existing_label.starts_with("session-"))
-            .map(|(_, window)| window);
+    let (sender, receiver) = mpsc::channel();
+    app.clone()
+        .run_on_main_thread(move || {
+            let result = (|| {
+                // 새 창을 만들기 전에 기준이 될 기존 세션 창을 먼저 찾는다.
+                let base_window = app
+                    .webview_windows()
+                    .into_iter()
+                    .find(|(existing_label, _)| existing_label.starts_with("session-"))
+                    .map(|(_, window)| window);
 
-        let new_win = match build_window(&app, &label, &project_id, &worktree_path) {
-            Ok(window) => window,
-            Err(err) => {
-                eprintln!("[session-tab] failed to create window: {err}");
-                return;
-            }
-        };
+                let new_win = build_window(&app, &label, &project_id, &worktree_path)?;
 
-        // 기존 세션 창이 있으면 그 창에 탭으로 합친다. 없으면 새 창 그대로(첫 탭 그룹).
-        if let Some(base) = base_window {
-            if let (Ok(base_ptr), Ok(new_ptr)) = (base.ns_window(), new_win.ns_window()) {
-                let base_ns: &NSWindow = unsafe { &*base_ptr.cast::<NSWindow>() };
-                let new_ns: &NSWindow = unsafe { &*new_ptr.cast::<NSWindow>() };
-                base_ns.addTabbedWindow_ordered(new_ns, NSWindowOrderingMode::Above);
-            }
-        }
-    });
+                // 기존 세션 창이 있으면 그 창에 탭으로 합친다. 없으면 새 창 그대로(첫 탭 그룹).
+                if let Some(base) = base_window {
+                    if let (Ok(base_ptr), Ok(new_ptr)) = (base.ns_window(), new_win.ns_window()) {
+                        let base_ns: &NSWindow = unsafe { &*base_ptr.cast::<NSWindow>() };
+                        let new_ns: &NSWindow = unsafe { &*new_ptr.cast::<NSWindow>() };
+                        base_ns.addTabbedWindow_ordered(new_ns, NSWindowOrderingMode::Above);
+                    }
+                }
+                Ok(())
+            })();
+            let _ = sender.send(result);
+        })
+        .map_err(|err| err.to_string())?;
+
+    receiver
+        .recv_timeout(Duration::from_secs(5))
+        .map_err(|_| "timed out while creating session tab".to_string())?
 }

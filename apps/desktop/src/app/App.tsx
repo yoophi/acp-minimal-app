@@ -1,5 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Route, Routes, useLocation, useNavigate, useParams } from "react-router-dom";
+import {
+  Route,
+  Routes,
+  useLocation,
+  useNavigate,
+  useParams,
+  useSearchParams,
+} from "react-router-dom";
 
 import { useProjectUiStore } from "@/app/model/project-ui-store";
 import {
@@ -98,7 +105,7 @@ export function App() {
   ) {
     if (mode === "current") {
       navigate(
-        `/projects/${project.id}/worktrees/${encodeURIComponent(worktree.path)}`,
+        `/projects/${project.id}/worktrees?worktreePath=${encodeURIComponent(worktree.path)}`,
       );
       return;
     }
@@ -168,7 +175,7 @@ export function App() {
             }
           />
           <Route
-            path="/projects/:projectId/worktrees/:worktreePath"
+            path="/projects/:projectId/worktrees"
             element={
               <ProjectWorktreeSessionRoute
                 projects={projects}
@@ -178,7 +185,7 @@ export function App() {
             }
           />
           <Route
-            path="/session/:projectId/:worktreePath"
+            path="/session/:projectId"
             element={
               <ProjectWorktreeSessionRoute
                 projects={projects}
@@ -275,9 +282,10 @@ function ProjectWorktreeSessionRoute({
   onBack?: (projectId: string) => void;
   standalone?: boolean;
 }) {
-  const { projectId, worktreePath } = useParams();
+  const { projectId } = useParams();
+  const [searchParams] = useSearchParams();
   const project = projects.find((project) => project.id === projectId);
-  const decodedWorktreePath = worktreePath ? decodeURIComponent(worktreePath) : "";
+  const decodedWorktreePath = searchParams.get("worktreePath") ?? "";
   const worktreesQuery = useQuery({
     queryKey: project
       ? projectQueryKeys.gitWorktrees(project.workingDirectory)
