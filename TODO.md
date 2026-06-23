@@ -37,13 +37,9 @@
 
 ## 부족한 점
 
-- `worktreePath` 전체를 route path segment 하나에 `encodeURIComponent`로 넣고 있다. `/`가 `%2F`로 들어간 URL을 HashRouter/Tauri webview가 항상 단일 param으로 보존하는지 native 환경에서 확인이 필요하다.
-- `PermissionRequestDialog`는 `respondAgentPermission` 호출 직후 optimistic하게 닫히지 않고, agent가 응답 완료 permission event를 다시 보내야 닫힌다. 응답 event가 늦거나 누락되면 dialog가 열린 채 남을 수 있다.
-- permission 응답 command는 `permissionId`만 받으므로 같은 permission id 충돌 가능성은 낮지만, 호출 window/run 검증은 하지 않는다. 악의적/오류성 UI 호출이 다른 run의 pending permission에 응답할 여지가 있다.
-- `open_session_window`의 macOS tab 생성은 실패를 `eprintln!`만 하고 command 결과로 전달하지 않는다. tab 생성 실패가 UI error로 보이지 않을 수 있다.
-- session label은 `DefaultHasher` 기반이다. 같은 실행 내 결정성은 충분하지만 Rust 구현/버전 간 장기 안정성을 명시적으로 보장하는 hash는 아니다.
-- login shell PATH 조회가 `SHELL -ilc`를 동기 실행한다. 첫 agent/terminal 실행 시 셸 초기화가 느리거나 사용자 shell 설정이 interactive side effect를 만들면 startup 지연/잡음이 생길 수 있다.
-- `dangerouslySkipAllPermissions` mode는 UI에서 일반 option과 같은 가중치로 노출된다. 의도치 않은 선택을 줄이기 위한 경고/확인 UX가 없다.
+- 실제 Tauri window/tab 생성, macOS tab grouping, focus 재사용은 native runtime에서 수동 확인이 필요하다.
+- permission request round-trip은 broker 단위 테스트와 frontend 타입 검증은 있지만, 실제 ACP agent가 permission 요청을 보내는 end-to-end 화면 검증은 아직 없다.
+- login shell PATH 조회는 timeout을 갖지만, Finder/Launchpad에서 실행한 packaged 앱 환경에서 실제 `codex`, `node`, `npx` resolution이 되는지는 수동 smoke test가 필요하다.
 - Tauri bundle/icon 변경이 기능 PR에 함께 들어와 있어 review 범위가 넓고, icon asset 생성 의도와 품질 검증이 분리되어 있지 않다.
 
 ## 남은 작업
@@ -52,7 +48,7 @@
   - 현재 창에서 열기
   - 새 창에서 열기
   - macOS 새 탭에서 열기
-- 경로에 `/`, 공백, 한글, `#`, `%`가 포함된 worktree path로 `/session/:projectId/:worktreePath` route 복원이 정확한지 확인한다.
+- 경로에 `/`, 공백, 한글, `#`, `%`가 포함된 worktree path를 실제 Tauri window에서 열어 query-string 기반 route 복원이 정확한지 확인한다.
 - 같은 worktree를 새 창/탭으로 다시 열 때 새 window를 만들지 않고 기존 session window가 focus되는지 확인한다.
 - 서로 다른 두 session window에서 agent run을 동시에 시작해 이벤트, usage, permission dialog, cancel 상태가 서로 섞이지 않는지 확인한다.
 - permission 요청이 필요한 agent/tool 호출을 실제로 실행해 다음 상태를 확인한다.
@@ -60,12 +56,6 @@
   - allow/reject 선택 후 dialog close
   - 선택 결과가 agent에 전달되어 run이 계속되거나 중단되는지
   - 이미 완료/취소된 run의 permission waiter가 정리되는지
-- permission 응답 후 frontend에서 pending dialog를 optimistic하게 닫을지, 응답 완료 event를 기다릴지 UX 정책을 결정한다.
-- `respond_agent_permission`에 run id 또는 owner window 검증을 추가할지 검토한다.
-- `session_label`을 장기 안정적인 hash 방식으로 바꿀지 검토한다. 예: `sha256(project_id + path)` prefix.
-- macOS tab 생성 실패를 command error로 surface할 수 있는 구조로 바꿀지 검토한다.
-- login shell PATH 조회에 timeout을 추가하거나, 조회 실패/지연 시 diagnostic을 남길지 검토한다.
-- `dangerouslySkipAllPermissions` 선택 시 별도 경고, 확인 dialog, 또는 더 보수적인 label을 둘지 결정한다.
 - bundle/icon 변경을 별도 PR로 분리할지, 현재 PR에 유지한다면 icon asset 출처와 생성 방법을 문서화한다.
 - native 변경이 있으므로 rebase 후 실제 앱을 다시 실행하고 smoke test를 수행한다.
 
@@ -73,7 +63,17 @@
 
 - `pnpm run check-types` 통과.
 - `pnpm run test` 통과.
-- 실제 Tauri multi-window/tab, permission request round-trip, login shell PATH 동작은 아직 수동 검증이 필요하다.
+- `cargo check --manifest-path apps/desktop/src-tauri/Cargo.toml` 통과.
+- `cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml permission -- --nocapture` 통과.
+- `cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml window_manager -- --nocapture` 통과.
+- Tauri dev 앱을 native rebuild와 함께 재실행했다.
+- worktree session route는 `worktreePath` query string 기반으로 변경했고, `/`, 공백, 한글, `#`, `%` 인코딩을 Rust unit test로 고정했다.
+- session label은 SHA-256 prefix 기반으로 변경했고 route-safe/stable 속성을 Rust unit test로 고정했다.
+- permission 응답은 run id와 owner window를 확인하도록 좁혔고, wrong-run 응답이 waiter를 제거하지 않는지 Rust unit test로 확인했다.
+- permission dialog는 응답 선택 직후 optimistic하게 닫히며, command 실패 시 다시 열릴 수 있도록 answered set에서 제거한다.
+- `dangerouslySkipAllPermissions` 선택 시 확인 dialog를 거치도록 했다.
+- login shell PATH 조회는 2초 timeout을 둬 느린 shell init에 무기한 막히지 않도록 했다.
+- 실제 Tauri multi-window/tab, permission request round-trip, packaged/Finder 실행 PATH 동작은 아직 수동 검증이 필요하다.
 
 ## 참고 변경 파일
 
