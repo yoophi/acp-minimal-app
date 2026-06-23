@@ -16,7 +16,7 @@ import {
 type ProjectWorktreeSessionPageProps = {
   project: Project;
   worktree: GitWorktree;
-  onBack: () => void;
+  onBack?: () => void;
 };
 
 export function ProjectWorktreeSessionPage({
@@ -27,10 +27,12 @@ export function ProjectWorktreeSessionPage({
   return (
     <div className="flex h-[calc(100svh-3rem)] min-h-0 flex-col gap-4 overflow-hidden">
       <div className="shrink-0 flex min-w-0 items-center gap-3">
-        <Button type="button" variant="ghost" className="shrink-0" onClick={onBack}>
-          <ArrowLeftIcon data-icon="inline-start" />
-          프로젝트
-        </Button>
+        {onBack && (
+          <Button type="button" variant="ghost" className="shrink-0" onClick={onBack}>
+            <ArrowLeftIcon data-icon="inline-start" />
+            프로젝트
+          </Button>
+        )}
         <Badge variant="secondary" className="shrink-0">
           Worktree Session
         </Badge>
