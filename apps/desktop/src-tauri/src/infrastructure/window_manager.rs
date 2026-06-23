@@ -3,6 +3,8 @@ use sha2::{Digest, Sha256};
 use std::{sync::mpsc, time::Duration};
 use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 
+use crate::infrastructure::devtools;
+
 /// macOS 네이티브 탭 그룹 식별자. 같은 식별자의 세션 창끼리 탭으로 묶인다.
 const TABBING_IDENTIFIER: &str = "acp-session";
 
@@ -93,7 +95,9 @@ fn build_window(
     let window = builder.build().map_err(|err| err.to_string())?;
 
     #[cfg(debug_assertions)]
-    window.open_devtools();
+    if devtools::should_open_devtools() {
+        window.open_devtools();
+    }
 
     Ok(window)
 }

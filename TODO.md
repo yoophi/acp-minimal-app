@@ -25,6 +25,7 @@
 - Tauri bundle 설정과 icon asset을 추가했다.
 - agent process와 terminal command 실행 시 login shell PATH를 조회해 `PATH`를 보강하고, 실행 파일을 가능한 경우 절대경로로 resolve하도록 했다.
 - PR #6 이후 `origin/main` 위로 rebase하면서 prompt queue, usage bar, fixed-height session layout, `scrollHeader` 구조와 permission/multi-window 변경을 결합했다.
+- debug build에서 DevTools가 항상 자동으로 열려 smoke test 화면을 가리던 동작을 `ACP_OPEN_DEVTOOLS` opt-in으로 변경했다.
 
 ## 잘 된 점
 
@@ -66,6 +67,7 @@
 - `cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml permission -- --nocapture` 통과.
 - `cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml window_manager -- --nocapture` 통과.
 - Tauri dev 앱을 native rebuild와 함께 재실행했다.
+- `ACP_OPEN_DEVTOOLS`를 설정하지 않은 dev 실행에서 DevTools가 자동으로 열리지 않는 것을 실제 Tauri 창으로 확인했다.
 - worktree session route는 `worktreePath` query string 기반으로 변경했고, `/`, 공백, 한글, `#`, `%` 인코딩을 Rust unit test로 고정했다.
 - 현재 창 session route도 frontend helper로 분리했고, 동일한 특수문자 worktree path round-trip을 Vitest로 고정했다.
 - session label은 SHA-256 prefix 기반으로 변경했고 route-safe/stable 속성을 Rust unit test로 고정했다.
