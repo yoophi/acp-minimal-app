@@ -26,6 +26,7 @@ import {
   eventGroups,
   toTimelineItem,
 } from "@/entities/agent-run/model";
+import type { TimelineRunEvent } from "@/entities/agent-run/model";
 import type { EventGroup, RunEvent, TimelineItem } from "@/entities/agent-run/model";
 import {
   addUserMessage,
@@ -125,11 +126,12 @@ export function AgentRunPanel({ workingDirectory, scrollHeader }: AgentRunPanelP
         return;
       }
 
+      const timelineEvent: TimelineRunEvent = envelope.event;
       setItems((currentItems) =>
-        addRunEventItem(currentItems, envelope.runId, envelope.event),
+        addRunEventItem(currentItems, envelope.runId, timelineEvent),
       );
 
-      if (envelope.event.type === "error") {
+      if (timelineEvent.type === "error") {
         setIsAwaitingPromptResponse(false);
         setQueuedPrompts([]);
         setIsRunning(false);
@@ -138,14 +140,14 @@ export function AgentRunPanel({ workingDirectory, scrollHeader }: AgentRunPanelP
         return;
       }
 
-      if (envelope.event.type === "lifecycle") {
-        if (envelope.event.status === "promptSent") {
+      if (timelineEvent.type === "lifecycle") {
+        if (timelineEvent.status === "promptSent") {
           setIsAwaitingPromptResponse(true);
         }
-        if (envelope.event.status === "promptCompleted") {
+        if (timelineEvent.status === "promptCompleted") {
           setIsAwaitingPromptResponse(false);
         }
-        if (["completed", "cancelled"].includes(envelope.event.status)) {
+        if (["completed", "cancelled"].includes(timelineEvent.status)) {
           setIsAwaitingPromptResponse(false);
           setQueuedPrompts([]);
           setIsRunning(false);
@@ -194,10 +196,7 @@ export function AgentRunPanel({ workingDirectory, scrollHeader }: AgentRunPanelP
 
   const selectedAgent = agents.find((agent) => agent.id === selectedAgentId);
   const visibleItems = useMemo(
-    () => {
-      const timelineItems = items.filter((item) => item.group !== "usage");
-      return filter === "all" ? timelineItems : timelineItems.filter((item) => item.group === filter);
-    },
+    () => (filter === "all" ? items : items.filter((item) => item.group === filter)),
     [filter, items],
   );
   const usagePercent =
@@ -653,7 +652,7 @@ function RunEventItem({ item }: { item: TimelineItem }) {
   );
 }
 
-function addRunEventItem(items: TimelineItem[], runId: string, event: RunEvent) {
+function addRunEventItem(items: TimelineItem[], runId: string, event: TimelineRunEvent) {
   return appendOneTimelineItem(items, toTimelineItem(runId, event));
 }
 
