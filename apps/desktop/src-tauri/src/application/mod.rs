@@ -1,4 +1,5 @@
 pub mod agent_run_errors;
+pub mod agent_run_settings_service;
 pub mod cancel_agent_run;
 pub mod git_branch_service;
 pub mod git_remote_service;

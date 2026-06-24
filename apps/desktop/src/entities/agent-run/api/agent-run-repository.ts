@@ -4,6 +4,7 @@ import type {
   AgentDescriptor,
   AgentRun,
   AgentRunRequest,
+  AgentRunSettings,
   PermissionMode,
   ProviderSession,
   RunEventEnvelope,
@@ -15,6 +16,16 @@ export async function listAgents() {
 
 export async function listProviderSessions(agentId: string, cwd?: string) {
   return invoke<ProviderSession[]>("list_provider_sessions", { agentId, cwd });
+}
+
+export async function getAgentRunSettings(workingDirectory: string) {
+  return invoke<AgentRunSettings | null>("get_agent_run_settings", {
+    workingDirectory,
+  });
+}
+
+export async function saveAgentRunSettings(settings: AgentRunSettings) {
+  return invoke<AgentRunSettings>("save_agent_run_settings", { settings });
 }
 
 export async function startAgentRun(request: AgentRunRequest) {
