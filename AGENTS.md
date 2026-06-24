@@ -4,6 +4,13 @@
 - The private Logseq graph is located at `~/docs/private-zk`.
 - When the user asks to save something as a private Logseq document, save it under `~/docs/private-zk`.
 
+## Documentation
+
+- Store project documentation under `docs/*.md`.
+- Use English file names for documentation files.
+- Write documentation content in Korean.
+- Use Mermaid charts for diagrams and flows in documentation.
+
 ## Frontend Architecture
 
 - Write code under `apps/desktop/src` using Feature-Sliced Design.
