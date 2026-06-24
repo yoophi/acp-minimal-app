@@ -27,10 +27,8 @@ where
         let mut sessions = self.repository.list(agent_id, scope)?;
         // RFC3339 문자열의 사전식 비교는 타임존 오프셋이 섞이면 어긋날 수 있으므로
         // 실제 시각으로 파싱해 내림차순(최신 우선) 정렬한다. 시각이 없거나 파싱
-        // 실패한 세션은 뒤로 보낸다.
-        sessions.sort_by(|left, right| {
-            updated_at_key(right).cmp(&updated_at_key(left))
-        });
+        // 실패한 세션은 뒤로 보낸다. 키 파싱은 세션당 1회만 수행한다.
+        sessions.sort_by_cached_key(|session| std::cmp::Reverse(updated_at_key(session)));
         if let Some(limit) = limit {
             sessions.truncate(limit);
         }
