@@ -20,10 +20,12 @@ import remarkGfm from "remark-gfm";
 
 import {
   cancelAgentRun,
+  getAgentRunSettings,
   listenRunEvents,
   listAgents,
   listProviderSessions,
   respondAgentPermission,
+  saveAgentRunSettings,
   sendPromptToRun,
   setRunPermissionMode,
   startAgentRun,
@@ -44,6 +46,8 @@ import type { TimelineRunEvent } from "@/entities/agent-run/model";
 import type {
   ContextSizePreset,
   EventGroup,
+  AgentRunSessionMode,
+  AgentRunSettings,
   GoalStatus,
   PermissionMode,
   ProviderSession,
@@ -210,7 +214,7 @@ const contextSizeOptions: Array<{
 export function AgentRunPanel({ workingDirectory, scrollHeader }: AgentRunPanelProps) {
   const queryClient = useQueryClient();
   const [selectedAgentId, setSelectedAgentId] = useState<string>("");
-  const [sessionMode, setSessionMode] = useState<"new" | "reuse">("new");
+  const [sessionMode, setSessionMode] = useState<AgentRunSessionMode>("new");
   const [selectedSessionId, setSelectedSessionId] = useState<string>("");
   const [permissionMode, setPermissionMode] = useState<PermissionMode>("default");
   const [isChangingPermissionMode, setIsChangingPermissionMode] = useState(false);
@@ -240,6 +244,7 @@ export function AgentRunPanel({ workingDirectory, scrollHeader }: AgentRunPanelP
   const [usageContext, setUsageContext] = useState<UsageContext | null>(null);
   const [promptPanelHeight, setPromptPanelHeight] = useState(PROMPT_PANEL_DEFAULT_HEIGHT);
   const activeRunIdRef = useRef<string | null>(null);
+  const settingsHydratedRef = useRef(false);
   const promptResizeRef = useRef<{
     pointerId: number;
     startY: number;
@@ -251,6 +256,19 @@ export function AgentRunPanel({ workingDirectory, scrollHeader }: AgentRunPanelP
     queryFn: listAgents,
   });
   const agents = agentsQuery.data ?? [];
+
+  const settingsQueryKey = agentRunQueryKeys.settings(workingDirectory);
+  const settingsQuery = useQuery({
+    queryKey: settingsQueryKey,
+    queryFn: () => getAgentRunSettings(workingDirectory),
+  });
+  const saveSettingsMutation = useMutation({
+    mutationFn: saveAgentRunSettings,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: settingsQueryKey });
+    },
+  });
+  const saveRunSettings = saveSettingsMutation.mutate;
 
   const goalQueryKey = agentRunQueryKeys.goal(workingDirectory);
   const goalQuery = useQuery({
@@ -298,6 +316,91 @@ export function AgentRunPanel({ workingDirectory, scrollHeader }: AgentRunPanelP
   useEffect(() => {
     setSelectedSessionId("");
   }, [selectedAgentId]);
+
+  useEffect(() => {
+    if (settingsHydratedRef.current || settingsQuery.isLoading) {
+      return;
+    }
+    if (settingsQuery.isError) {
+      setError(String(settingsQuery.error));
+      return;
+    }
+
+    const savedSettings = settingsQuery.data;
+    if (savedSettings) {
+      setSelectedAgentId(savedSettings.agentId);
+      setPermissionMode(savedSettings.permissionMode);
+      setModelId(
+        isModelOptionValue(savedSettings.modelId)
+          ? savedSettings.modelId
+          : "providerDefault",
+      );
+      setContextSize(savedSettings.contextSize);
+      setSessionMode(savedSettings.sessionMode);
+      setRalphLoopEnabled(savedSettings.ralphLoop.enabled);
+      setRalphMaxIterations(
+        Math.min(
+          RALPH_MAX_ITERATIONS,
+          Math.max(1, Math.round(savedSettings.ralphLoop.maxIterations)),
+        ),
+      );
+      setRalphDelaySeconds(Math.max(0, savedSettings.ralphLoop.delayMs / 1000));
+      setRalphStopOnError(savedSettings.ralphLoop.stopOnError);
+      setRalphPromptTemplate(
+        savedSettings.ralphLoop.promptTemplate.trim() || RALPH_DEFAULT_PROMPT,
+      );
+    }
+
+    settingsHydratedRef.current = true;
+  }, [
+    settingsQuery.data,
+    settingsQuery.error,
+    settingsQuery.isError,
+    settingsQuery.isLoading,
+  ]);
+
+  useEffect(() => {
+    if (!settingsHydratedRef.current || !selectedAgentId || !workingDirectory.trim()) {
+      return;
+    }
+
+    const settings: AgentRunSettings = {
+      workingDirectory,
+      agentId: selectedAgentId,
+      permissionMode,
+      modelId,
+      contextSize,
+      sessionMode,
+      ralphLoop: {
+        enabled: ralphLoopEnabled,
+        maxIterations: ralphMaxIterations,
+        delayMs: Math.max(0, Math.round(ralphDelaySeconds * 1000)),
+        stopOnError: ralphStopOnError,
+        promptTemplate: ralphPromptTemplate,
+      },
+    };
+
+    const timeoutId = window.setTimeout(() => {
+      saveRunSettings(settings, {
+        onError: (caughtError) => setError(String(caughtError)),
+      });
+    }, 400);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [
+    contextSize,
+    modelId,
+    permissionMode,
+    ralphDelaySeconds,
+    ralphLoopEnabled,
+    ralphMaxIterations,
+    ralphPromptTemplate,
+    ralphStopOnError,
+    saveRunSettings,
+    selectedAgentId,
+    sessionMode,
+    workingDirectory,
+  ]);
 
   useEffect(() => {
     activeRunIdRef.current = activeRunId;
@@ -1444,6 +1547,10 @@ function findPendingPermission(items: TimelineItem[]) {
 
 function clampPromptPanelHeight(height: number) {
   return Math.min(PROMPT_PANEL_MAX_HEIGHT, Math.max(PROMPT_PANEL_MIN_HEIGHT, height));
+}
+
+function isModelOptionValue(value: string): value is (typeof modelOptions)[number]["value"] {
+  return modelOptions.some((option) => option.value === value);
 }
 
 function parseOptionalPositiveInteger(value: string) {

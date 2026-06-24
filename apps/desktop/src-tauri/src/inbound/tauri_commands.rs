@@ -4,13 +4,15 @@ use tauri::{AppHandle, State};
 
 use crate::{
     application::{
-        cancel_agent_run::CancelAgentRunUseCase, git_branch_service, git_remote_service,
-        git_worktree_service, goal_service, list_provider_sessions::ListProviderSessionsUseCase,
-        project_service, saved_prompt_service, send_prompt::SendPromptUseCase,
-        set_permission_mode::SetPermissionModeUseCase, start_agent_run::StartAgentRunUseCase,
+        agent_run_settings_service, cancel_agent_run::CancelAgentRunUseCase, git_branch_service,
+        git_remote_service, git_worktree_service, goal_service,
+        list_provider_sessions::ListProviderSessionsUseCase, project_service, saved_prompt_service,
+        send_prompt::SendPromptUseCase, set_permission_mode::SetPermissionModeUseCase,
+        start_agent_run::StartAgentRunUseCase,
     },
     domain::{
         agent::AgentDescriptor,
+        agent_run_settings::AgentRunSettings,
         git_branch::GitBranch,
         git_remote::GitRemote,
         git_worktree::{GitWorktree, GitWorktreeCreateDraft},
@@ -27,6 +29,7 @@ use crate::{
         git_cli_branch_provider::GitCliBranchProvider,
         git_cli_remote_provider::GitCliRemoteProvider,
         git_cli_worktree_provider::GitCliWorktreeProvider,
+        json_agent_run_settings_repository::JsonAgentRunSettingsRepository,
         json_goal_repository::JsonGoalRepository, json_project_repository::JsonProjectRepository,
         json_saved_prompt_repository::JsonSavedPromptRepository,
         noop_acp_session_store::NoopAcpSessionStore, tauri_run_event_sink::TauriRunEventSink,
@@ -183,6 +186,24 @@ pub fn update_goal(
 pub fn clear_goal(app: AppHandle, working_directory: String) -> Result<(), String> {
     let repository = JsonGoalRepository::from_app(&app)?;
     goal_service::clear_goal(&repository, working_directory)
+}
+
+#[tauri::command]
+pub fn get_agent_run_settings(
+    app: AppHandle,
+    working_directory: String,
+) -> Result<Option<AgentRunSettings>, String> {
+    let repository = JsonAgentRunSettingsRepository::from_app(&app)?;
+    agent_run_settings_service::get_settings(&repository, working_directory)
+}
+
+#[tauri::command]
+pub fn save_agent_run_settings(
+    app: AppHandle,
+    settings: AgentRunSettings,
+) -> Result<AgentRunSettings, String> {
+    let repository = JsonAgentRunSettingsRepository::from_app(&app)?;
+    agent_run_settings_service::save_settings(&repository, settings)
 }
 
 #[tauri::command]

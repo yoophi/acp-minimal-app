@@ -5,6 +5,7 @@ export type AgentDescriptor = {
 };
 
 export type ResumePolicy = "fresh" | "resumeIfAvailable" | "resumeRequired";
+export type AgentRunSessionMode = "new" | "reuse";
 
 /** Ralph loop: 목표가 끝날 때까지 동일 prompt를 자동 반복 실행하는 설정. */
 export type RalphLoopRequest = {
@@ -14,6 +15,24 @@ export type RalphLoopRequest = {
   stopOnError: boolean;
   stopOnPermission: boolean;
   delayMs: number;
+};
+
+export type AgentRunSettings = {
+  workingDirectory: string;
+  agentId: string;
+  permissionMode: PermissionMode;
+  modelId: string;
+  contextSize: ContextSizePreset;
+  sessionMode: AgentRunSessionMode;
+  ralphLoop: AgentRunSettingsRalphLoop;
+};
+
+export type AgentRunSettingsRalphLoop = {
+  enabled: boolean;
+  maxIterations: number;
+  delayMs: number;
+  stopOnError: boolean;
+  promptTemplate: string;
 };
 
 export type GoalStatus =
