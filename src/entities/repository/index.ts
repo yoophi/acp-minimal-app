@@ -21,6 +21,7 @@ export type {
   GitCommitFileChange,
   GitCommitHistory,
   GitCommitPage,
+  GitCommitQueryOptions,
   GitCommitGraph,
   GitCommitSummary,
   GitFileDiff,

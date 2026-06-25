@@ -29,12 +29,16 @@ pub trait GitHistoryReader {
         repository_path: &str,
         limit: usize,
         offset: usize,
+        included_refs: &[String],
+        excluded_refs: &[String],
     ) -> Result<GitCommitHistory, String>;
     fn get_commit_graph(
         &self,
         repository_path: &str,
         limit: usize,
         offset: usize,
+        included_refs: &[String],
+        excluded_refs: &[String],
     ) -> Result<GitCommitGraph, String>;
     fn get_commit_detail(
         &self,

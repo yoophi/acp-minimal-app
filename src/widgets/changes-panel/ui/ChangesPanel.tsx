@@ -231,6 +231,37 @@ function graphRefKey(ref: GitGraphRef) {
   return `${ref.kind}:${ref.name}`;
 }
 
+function branchHistoryRefs(
+  branches: GitBranch[],
+  filteredBranchKeys: ReadonlySet<string>,
+  hiddenBranchKeys: ReadonlySet<string>,
+) {
+  const includedRefs: string[] = [];
+  const excludedRefs: string[] = [];
+  const hasBranchFilters = filteredBranchKeys.size > 0;
+
+  for (const branch of branches) {
+    const key = branchGraphRefKey(branch);
+
+    if (hasBranchFilters && filteredBranchKeys.has(key)) {
+      includedRefs.push(branch.fullName);
+      continue;
+    }
+
+    if (!hasBranchFilters && hiddenBranchKeys.has(key)) {
+      excludedRefs.push(branch.fullName);
+    }
+  }
+
+  includedRefs.sort();
+  excludedRefs.sort();
+
+  return {
+    excludedRefs,
+    includedRefs,
+  };
+}
+
 function getReachableCommitHashes(commits: GitGraphCommit[], targetHashes: ReadonlySet<string>) {
   const commitByHash = new Map(commits.map((commit) => [commit.hash, commit]));
   const reachable = new Set<string>();
@@ -816,13 +847,25 @@ export function ChangesPanel({ selectedRepository }: ChangesPanelProps) {
       : ["repositories", "unselected", "branches"],
     queryFn: () => listBranches(selectedRepository?.id ?? ""),
   });
+  const branchRefs = branchHistoryRefs(
+    branchesQuery.data ?? [],
+    filteredBranchKeys,
+    hiddenBranchKeys,
+  );
+  const branchRefsSignature = `${branchRefs.includedRefs.join("\0")}\u0001${branchRefs.excludedRefs.join("\0")}`;
   const historyQuery = useInfiniteQuery({
     enabled: Boolean(selectedRepository),
     queryKey: selectedRepository
-      ? repositoryKeys.history(selectedRepository.id, { maxCount: HISTORY_PAGE_SIZE })
+      ? repositoryKeys.history(selectedRepository.id, {
+          excludedRefs: branchRefs.excludedRefs,
+          includedRefs: branchRefs.includedRefs,
+          maxCount: HISTORY_PAGE_SIZE,
+        })
       : ["repositories", "unselected", "history"],
     queryFn: ({ pageParam }) =>
       listHistory(selectedRepository?.id ?? "", {
+        excludedRefs: branchRefs.excludedRefs,
+        includedRefs: branchRefs.includedRefs,
         maxCount: HISTORY_PAGE_SIZE,
         offset: pageParam,
       }),
@@ -833,10 +876,16 @@ export function ChangesPanel({ selectedRepository }: ChangesPanelProps) {
   const graphQuery = useInfiniteQuery({
     enabled: Boolean(selectedRepository),
     queryKey: selectedRepository
-      ? repositoryKeys.commitGraph(selectedRepository.id, { maxCount: GRAPH_PAGE_SIZE })
+      ? repositoryKeys.commitGraph(selectedRepository.id, {
+          excludedRefs: branchRefs.excludedRefs,
+          includedRefs: branchRefs.includedRefs,
+          maxCount: GRAPH_PAGE_SIZE,
+        })
       : ["repositories", "unselected", "commitGraph"],
     queryFn: ({ pageParam }) =>
       getCommitGraph(selectedRepository?.id ?? "", {
+        excludedRefs: branchRefs.excludedRefs,
+        includedRefs: branchRefs.includedRefs,
         maxCount: GRAPH_PAGE_SIZE,
         offset: pageParam,
       }),
@@ -889,6 +938,11 @@ export function ChangesPanel({ selectedRepository }: ChangesPanelProps) {
   useEffect(() => {
     setSelectedFilePath(undefined);
   }, [selectedCommitHash]);
+
+  useEffect(() => {
+    setSelectedCommitHash(undefined);
+    setSelectedFilePath(undefined);
+  }, [branchRefsSignature]);
 
   useEffect(() => {
     setExpandedBranchFolders(getBranchFolderPaths(branchesQuery.data ?? []));

@@ -100,8 +100,11 @@ impl GitHistoryReader for GitCliRepositoryValidator {
         repository_path: &str,
         limit: usize,
         offset: usize,
+        included_refs: &[String],
+        excluded_refs: &[String],
     ) -> Result<GitCommitHistory, String> {
-        let total_count = git_head_commit_count(repository_path)?;
+        let revisions = git_history_revisions(included_refs, excluded_refs, false);
+        let total_count = git_revision_count(repository_path, &revisions)?;
 
         if total_count == 0 {
             return Ok(GitCommitHistory::new(
@@ -120,6 +123,7 @@ impl GitHistoryReader for GitCliRepositoryValidator {
                 "-n",
                 &limit.to_string(),
             ])
+            .args(&revisions)
             .output()
             .map_err(|error| format!("Failed to run git: {error}"))?;
 
@@ -146,8 +150,11 @@ impl GitHistoryReader for GitCliRepositoryValidator {
         repository_path: &str,
         limit: usize,
         offset: usize,
+        included_refs: &[String],
+        excluded_refs: &[String],
     ) -> Result<GitCommitGraph, String> {
-        let total_count = git_commit_count(repository_path)?;
+        let revisions = git_history_revisions(included_refs, excluded_refs, true);
+        let total_count = git_revision_count(repository_path, &revisions)?;
 
         if total_count == 0 {
             return Ok(GitCommitGraph::new(
@@ -165,7 +172,6 @@ impl GitHistoryReader for GitCliRepositoryValidator {
                 repository_path,
                 "log",
                 "--exclude=refs/stash",
-                "--all",
                 "--topo-order",
                 "--date=iso-strict",
                 "--pretty=format:%H%x00%h%x00%P%x00%s%x00%an%x00%cI%x1e",
@@ -173,6 +179,7 @@ impl GitHistoryReader for GitCliRepositoryValidator {
                 "-n",
                 &limit.to_string(),
             ])
+            .args(&revisions)
             .output()
             .map_err(|error| format!("Failed to run git: {error}"))?;
 
@@ -307,16 +314,16 @@ impl GitHistoryReader for GitCliRepositoryValidator {
     }
 }
 
-fn git_commit_count(repository_path: &str) -> Result<usize, String> {
+fn git_revision_count(repository_path: &str, revisions: &[String]) -> Result<usize, String> {
     let output = Command::new("git")
         .args([
             "-C",
             repository_path,
             "rev-list",
             "--exclude=refs/stash",
-            "--all",
             "--count",
         ])
+        .args(revisions)
         .output()
         .map_err(|error| format!("Failed to run git: {error}"))?;
 
@@ -336,26 +343,26 @@ fn git_commit_count(repository_path: &str) -> Result<usize, String> {
         .map_err(|error| format!("Git commit count is invalid: {error}"))
 }
 
-fn git_head_commit_count(repository_path: &str) -> Result<usize, String> {
-    let output = Command::new("git")
-        .args(["-C", repository_path, "rev-list", "--count", "HEAD"])
-        .output()
-        .map_err(|error| format!("Failed to run git: {error}"))?;
-
-    if !output.status.success() {
-        return Err(git_error_message(
-            &output.stderr,
-            "Failed to count Git commits.",
-        ));
+fn git_history_revisions(
+    included_refs: &[String],
+    excluded_refs: &[String],
+    default_all: bool,
+) -> Vec<String> {
+    if !included_refs.is_empty() {
+        return included_refs.to_vec();
     }
 
-    let stdout = String::from_utf8(output.stdout)
-        .map_err(|error| format!("Git returned invalid UTF-8: {error}"))?;
+    if !excluded_refs.is_empty() {
+        let mut revisions = vec!["--all".to_string(), "--not".to_string()];
+        revisions.extend(excluded_refs.iter().cloned());
+        return revisions;
+    }
 
-    stdout
-        .trim()
-        .parse::<usize>()
-        .map_err(|error| format!("Git commit count is invalid: {error}"))
+    if default_all {
+        return vec!["--all".to_string()];
+    }
+
+    vec!["HEAD".to_string()]
 }
 
 fn git_head_hash(repository_path: &str) -> Result<String, String> {

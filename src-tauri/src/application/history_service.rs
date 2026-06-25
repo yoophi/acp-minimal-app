@@ -31,14 +31,24 @@ where
         repository_id: String,
         max_count: Option<usize>,
         offset: Option<usize>,
+        included_refs: Vec<String>,
+        excluded_refs: Vec<String>,
     ) -> Result<GitCommitHistory, String> {
         let repository_path = self.registered_repository_path(repository_id)?;
         let limit = max_count
             .unwrap_or(DEFAULT_HISTORY_LIMIT)
             .clamp(1, MAX_HISTORY_LIMIT);
         let offset = offset.unwrap_or(0);
+        let included_refs = normalize_branch_refs(included_refs)?;
+        let excluded_refs = normalize_branch_refs(excluded_refs)?;
 
-        self.reader.list_history(&repository_path, limit, offset)
+        self.reader.list_history(
+            &repository_path,
+            limit,
+            offset,
+            &included_refs,
+            &excluded_refs,
+        )
     }
 
     pub fn get_commit_graph(
@@ -46,15 +56,24 @@ where
         repository_id: String,
         max_count: Option<usize>,
         offset: Option<usize>,
+        included_refs: Vec<String>,
+        excluded_refs: Vec<String>,
     ) -> Result<GitCommitGraph, String> {
         let repository_path = self.registered_repository_path(repository_id)?;
         let limit = max_count
             .unwrap_or(DEFAULT_GRAPH_LIMIT)
             .clamp(1, MAX_GRAPH_LIMIT);
         let offset = offset.unwrap_or(0);
+        let included_refs = normalize_branch_refs(included_refs)?;
+        let excluded_refs = normalize_branch_refs(excluded_refs)?;
 
-        self.reader
-            .get_commit_graph(&repository_path, limit, offset)
+        self.reader.get_commit_graph(
+            &repository_path,
+            limit,
+            offset,
+            &included_refs,
+            &excluded_refs,
+        )
     }
 
     pub fn get_commit_detail(
@@ -113,6 +132,33 @@ where
     }
 }
 
+fn normalize_branch_refs(refs: Vec<String>) -> Result<Vec<String>, String> {
+    let mut normalized_refs = Vec::new();
+
+    for git_ref in refs {
+        let trimmed_ref = git_ref.trim();
+
+        if trimmed_ref.is_empty() {
+            continue;
+        }
+
+        if !trimmed_ref.starts_with("refs/heads/") && !trimmed_ref.starts_with("refs/remotes/") {
+            return Err(format!("Unsupported branch ref: {trimmed_ref}"));
+        }
+
+        if normalized_refs
+            .iter()
+            .any(|existing_ref| existing_ref == trimmed_ref)
+        {
+            continue;
+        }
+
+        normalized_refs.push(trimmed_ref.to_string());
+    }
+
+    Ok(normalized_refs)
+}
+
 #[cfg(test)]
 mod tests {
     use std::{cell::RefCell, rc::Rc};
@@ -148,6 +194,16 @@ mod tests {
 
     struct StaticHistoryReader {
         commits: Vec<GitCommitSummary>,
+        received_included_refs: Rc<RefCell<Vec<String>>>,
+        received_excluded_refs: Rc<RefCell<Vec<String>>>,
+    }
+
+    fn static_reader(commits: Vec<GitCommitSummary>) -> StaticHistoryReader {
+        StaticHistoryReader {
+            commits,
+            received_included_refs: Rc::new(RefCell::new(Vec::new())),
+            received_excluded_refs: Rc::new(RefCell::new(Vec::new())),
+        }
     }
 
     impl GitHistoryReader for StaticHistoryReader {
@@ -156,7 +212,11 @@ mod tests {
             _repository_path: &str,
             limit: usize,
             offset: usize,
+            included_refs: &[String],
+            excluded_refs: &[String],
         ) -> Result<GitCommitHistory, String> {
+            *self.received_included_refs.borrow_mut() = included_refs.to_vec();
+            *self.received_excluded_refs.borrow_mut() = excluded_refs.to_vec();
             let commits = self
                 .commits
                 .iter()
@@ -176,7 +236,11 @@ mod tests {
             _repository_path: &str,
             limit: usize,
             offset: usize,
+            included_refs: &[String],
+            excluded_refs: &[String],
         ) -> Result<GitCommitGraph, String> {
+            *self.received_included_refs.borrow_mut() = included_refs.to_vec();
+            *self.received_excluded_refs.borrow_mut() = excluded_refs.to_vec();
             Ok(GitCommitGraph::new(
                 Vec::new(),
                 Vec::new(),
@@ -220,14 +284,10 @@ mod tests {
 
     #[test]
     fn rejects_unregistered_repository() {
-        let service = HistoryService::new(
-            MemoryStore::default(),
-            StaticHistoryReader {
-                commits: Vec::new(),
-            },
-        );
+        let service = HistoryService::new(MemoryStore::default(), static_reader(Vec::new()));
 
-        let result = service.list_history("/tmp/repo".to_string(), None, None);
+        let result =
+            service.list_history("/tmp/repo".to_string(), None, None, Vec::new(), Vec::new());
 
         assert_eq!(result.unwrap_err(), "Repository is not registered.");
     }
@@ -248,16 +308,17 @@ mod tests {
             "A Developer".to_string(),
             "2026-06-25T00:00:00+09:00".to_string(),
         )];
-        let service = HistoryService::new(
-            store,
-            StaticHistoryReader {
-                commits: commits.clone(),
-            },
-        );
+        let service = HistoryService::new(store, static_reader(commits.clone()));
 
         assert_eq!(
             service
-                .list_history("/tmp/repo".to_string(), Some(100), Some(0))
+                .list_history(
+                    "/tmp/repo".to_string(),
+                    Some(100),
+                    Some(0),
+                    Vec::new(),
+                    Vec::new()
+                )
                 .expect("history should be returned"),
             GitCommitHistory::new(
                 commits.clone(),
@@ -290,21 +351,83 @@ mod tests {
                 "2026-06-25T01:00:00+09:00".to_string(),
             ),
         ];
-        let service = HistoryService::new(
-            store,
-            StaticHistoryReader {
-                commits: commits.clone(),
-            },
-        );
+        let service = HistoryService::new(store, static_reader(commits.clone()));
 
         let history = service
-            .list_history("/tmp/repo".to_string(), Some(1), Some(1))
+            .list_history(
+                "/tmp/repo".to_string(),
+                Some(1),
+                Some(1),
+                Vec::new(),
+                Vec::new(),
+            )
             .expect("history should be returned");
 
         assert_eq!(history.commits, vec![commits[1].clone()]);
         assert_eq!(history.page.limit, 1);
         assert_eq!(history.page.offset, 1);
         assert!(!history.page.has_more);
+    }
+
+    #[test]
+    fn passes_normalized_branch_refs_to_history_reader() {
+        let store = MemoryStore::default();
+        store
+            .save_all(&[Repository::new(
+                "/tmp/repo".to_string(),
+                "repo".to_string(),
+                "/tmp/repo".to_string(),
+            )])
+            .expect("repository should be stored");
+        let included_refs = Rc::new(RefCell::new(Vec::new()));
+        let excluded_refs = Rc::new(RefCell::new(Vec::new()));
+        let service = HistoryService::new(
+            store,
+            StaticHistoryReader {
+                commits: Vec::new(),
+                received_included_refs: included_refs.clone(),
+                received_excluded_refs: excluded_refs.clone(),
+            },
+        );
+
+        service
+            .list_history(
+                "/tmp/repo".to_string(),
+                None,
+                None,
+                vec![
+                    " refs/heads/main ".to_string(),
+                    "refs/heads/main".to_string(),
+                ],
+                vec!["refs/remotes/origin/main".to_string()],
+            )
+            .expect("history should be returned");
+
+        assert_eq!(*included_refs.borrow(), vec!["refs/heads/main"]);
+        assert_eq!(*excluded_refs.borrow(), vec!["refs/remotes/origin/main"]);
+    }
+
+    #[test]
+    fn rejects_unsupported_branch_refs() {
+        let store = MemoryStore::default();
+        store
+            .save_all(&[Repository::new(
+                "/tmp/repo".to_string(),
+                "repo".to_string(),
+                "/tmp/repo".to_string(),
+            )])
+            .expect("repository should be stored");
+        let service = HistoryService::new(store, static_reader(Vec::new()));
+
+        let result = service.list_history(
+            "/tmp/repo".to_string(),
+            None,
+            None,
+            vec!["--all".to_string()],
+            Vec::new(),
+        );
+
+        assert_eq!(result.unwrap_err(), "Unsupported branch ref: --all");
     }
 
     #[test]
@@ -317,15 +440,16 @@ mod tests {
                 "/tmp/repo".to_string(),
             )])
             .expect("repository should be stored");
-        let service = HistoryService::new(
-            store,
-            StaticHistoryReader {
-                commits: Vec::new(),
-            },
-        );
+        let service = HistoryService::new(store, static_reader(Vec::new()));
 
         let graph = service
-            .get_commit_graph("/tmp/repo".to_string(), Some(1000), Some(2))
+            .get_commit_graph(
+                "/tmp/repo".to_string(),
+                Some(1000),
+                Some(2),
+                Vec::new(),
+                Vec::new(),
+            )
             .expect("commit graph should be returned");
 
         assert_eq!(graph.page.limit, 500);
@@ -342,12 +466,7 @@ mod tests {
                 "/tmp/repo".to_string(),
             )])
             .expect("repository should be stored");
-        let service = HistoryService::new(
-            store,
-            StaticHistoryReader {
-                commits: Vec::new(),
-            },
-        );
+        let service = HistoryService::new(store, static_reader(Vec::new()));
 
         let result = service.get_commit_detail("/tmp/repo".to_string(), "  ".to_string());
 
@@ -364,12 +483,7 @@ mod tests {
                 "/tmp/repo".to_string(),
             )])
             .expect("repository should be stored");
-        let service = HistoryService::new(
-            store,
-            StaticHistoryReader {
-                commits: Vec::new(),
-            },
-        );
+        let service = HistoryService::new(store, static_reader(Vec::new()));
 
         let detail = service
             .get_commit_detail("/tmp/repo".to_string(), "abc123".to_string())
@@ -389,12 +503,7 @@ mod tests {
                 "/tmp/repo".to_string(),
             )])
             .expect("repository should be stored");
-        let service = HistoryService::new(
-            store,
-            StaticHistoryReader {
-                commits: Vec::new(),
-            },
-        );
+        let service = HistoryService::new(store, static_reader(Vec::new()));
 
         let result = service.get_file_diff(
             "/tmp/repo".to_string(),
@@ -415,12 +524,7 @@ mod tests {
                 "/tmp/repo".to_string(),
             )])
             .expect("repository should be stored");
-        let service = HistoryService::new(
-            store,
-            StaticHistoryReader {
-                commits: Vec::new(),
-            },
-        );
+        let service = HistoryService::new(store, static_reader(Vec::new()));
 
         let diff = service
             .get_file_diff(

@@ -8,9 +8,70 @@ import {
   sampleRepositories,
   sampleWorktrees,
 } from "../../src/shared/storybook/sample-data";
-import type { Repository } from "../../src/entities/repository";
+import type { GitCommitGraph, GitCommitSummary, Repository } from "../../src/entities/repository";
 
 let storybookRepositories: Repository[] = [...sampleRepositories];
+
+type CommitRequest = {
+  excludedRefs?: string[];
+  includedRefs?: string[];
+  maxCount?: number;
+  offset?: number;
+};
+
+function shortRefName(fullName: string) {
+  if (fullName.startsWith("refs/heads/")) {
+    return fullName.slice("refs/heads/".length);
+  }
+
+  if (fullName.startsWith("refs/remotes/")) {
+    return fullName.slice("refs/remotes/".length);
+  }
+
+  return fullName;
+}
+
+function commitHashesForRefs(refs: string[]) {
+  const shortNames = refs.map(shortRefName);
+
+  return new Set(
+    sampleCommitGraph.refs
+      .filter((ref) => shortNames.includes(shortRefName(ref.name)) || shortNames.includes(ref.name))
+      .map((ref) => ref.target),
+  );
+}
+
+function filteredHistory(request?: CommitRequest): GitCommitSummary[] {
+  if (request?.includedRefs?.length) {
+    const targetHashes = commitHashesForRefs(request.includedRefs);
+
+    return sampleHistory.filter((commit) => targetHashes.has(commit.hash));
+  }
+
+  if (request?.excludedRefs?.length) {
+    const targetHashes = commitHashesForRefs(request.excludedRefs);
+
+    return sampleHistory.filter((commit) => !targetHashes.has(commit.hash));
+  }
+
+  return sampleHistory;
+}
+
+function filteredGraph(request?: CommitRequest): GitCommitGraph {
+  const history = filteredHistory(request);
+  const historyHashes = new Set(history.map((commit) => commit.hash));
+
+  return {
+    ...sampleCommitGraph,
+    commits: sampleCommitGraph.commits.filter((commit) => historyHashes.has(commit.hash)),
+    refs: sampleCommitGraph.refs.filter((ref) => historyHashes.has(ref.target)),
+    page: {
+      ...sampleCommitGraph.page,
+      totalCount: history.length,
+      hasMore: false,
+    },
+  };
+}
 
 export async function invoke<T>(command: string, args?: Record<string, unknown>) {
   switch (command) {
@@ -61,23 +122,24 @@ export async function invoke<T>(command: string, args?: Record<string, unknown>)
     case "list_branches":
       return sampleBranches as T;
     case "list_history": {
-      const request = args?.request as { maxCount?: number; offset?: number } | undefined;
+      const request = args?.request as CommitRequest | undefined;
       const offset = request?.offset ?? 0;
       const limit = request?.maxCount ?? 100;
-      const commits = sampleHistory.slice(offset, offset + limit);
+      const history = filteredHistory(request);
+      const commits = history.slice(offset, offset + limit);
 
       return {
         commits,
         page: {
           offset,
           limit,
-          totalCount: sampleHistory.length,
-          hasMore: offset + commits.length < sampleHistory.length,
+          totalCount: history.length,
+          hasMore: offset + commits.length < history.length,
         },
       } as T;
     }
     case "get_commit_graph":
-      return sampleCommitGraph as T;
+      return filteredGraph(args?.request as CommitRequest | undefined) as T;
     case "get_commit_detail":
       return sampleCommitDetail as T;
     case "get_file_diff": {

@@ -66,6 +66,8 @@ pub struct ListHistoryRequest {
     repository_id: String,
     max_count: Option<usize>,
     offset: Option<usize>,
+    included_refs: Option<Vec<String>>,
+    excluded_refs: Option<Vec<String>>,
 }
 
 #[derive(Deserialize)]
@@ -74,6 +76,8 @@ pub struct GetCommitGraphRequest {
     repository_id: String,
     max_count: Option<usize>,
     offset: Option<usize>,
+    included_refs: Option<Vec<String>>,
+    excluded_refs: Option<Vec<String>>,
 }
 
 #[derive(Deserialize)]
@@ -143,7 +147,13 @@ pub fn list_history(
     app: AppHandle,
     request: ListHistoryRequest,
 ) -> Result<GitCommitHistory, String> {
-    history_service(app)?.list_history(request.repository_id, request.max_count, request.offset)
+    history_service(app)?.list_history(
+        request.repository_id,
+        request.max_count,
+        request.offset,
+        request.included_refs.unwrap_or_default(),
+        request.excluded_refs.unwrap_or_default(),
+    )
 }
 
 #[tauri::command]
@@ -151,7 +161,13 @@ pub fn get_commit_graph(
     app: AppHandle,
     request: GetCommitGraphRequest,
 ) -> Result<GitCommitGraph, String> {
-    history_service(app)?.get_commit_graph(request.repository_id, request.max_count, request.offset)
+    history_service(app)?.get_commit_graph(
+        request.repository_id,
+        request.max_count,
+        request.offset,
+        request.included_refs.unwrap_or_default(),
+        request.excluded_refs.unwrap_or_default(),
+    )
 }
 
 #[tauri::command]

@@ -27,7 +27,8 @@ function RepositoryInvalidationBridge() {
 
       void queryClient.invalidateQueries({ queryKey: repositoryKeys.worktrees(repositoryId) });
       void queryClient.invalidateQueries({ queryKey: repositoryKeys.branches(repositoryId) });
-      void queryClient.invalidateQueries({ queryKey: repositoryKeys.history(repositoryId) });
+      void queryClient.invalidateQueries({ queryKey: repositoryKeys.historyRoot(repositoryId) });
+      void queryClient.invalidateQueries({ queryKey: repositoryKeys.commitGraphRoot(repositoryId) });
       void queryClient.invalidateQueries({
         queryKey: ["repositories", repositoryId, "commits"],
       });

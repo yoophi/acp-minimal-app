@@ -99,14 +99,37 @@ export type GitFileDiff = {
   isTruncated: boolean;
 };
 
+export type GitCommitQueryOptions = {
+  maxCount?: number;
+  offset?: number;
+  includedRefs?: string[];
+  excludedRefs?: string[];
+};
+
 export const repositoryKeys = {
   all: ["repositories"] as const,
   worktrees: (repositoryId: string) => ["repositories", repositoryId, "worktrees"] as const,
   branches: (repositoryId: string) => ["repositories", repositoryId, "branches"] as const,
-  history: (repositoryId: string, options?: { maxCount?: number }) =>
-    ["repositories", repositoryId, "history", options?.maxCount ?? 100] as const,
-  commitGraph: (repositoryId: string, options?: { maxCount?: number; offset?: number }) =>
-    ["repositories", repositoryId, "commitGraph", options?.maxCount ?? 300] as const,
+  historyRoot: (repositoryId: string) => ["repositories", repositoryId, "history"] as const,
+  history: (repositoryId: string, options?: GitCommitQueryOptions) =>
+    [
+      "repositories",
+      repositoryId,
+      "history",
+      options?.maxCount ?? 100,
+      options?.includedRefs ?? [],
+      options?.excludedRefs ?? [],
+    ] as const,
+  commitGraphRoot: (repositoryId: string) => ["repositories", repositoryId, "commitGraph"] as const,
+  commitGraph: (repositoryId: string, options?: GitCommitQueryOptions) =>
+    [
+      "repositories",
+      repositoryId,
+      "commitGraph",
+      options?.maxCount ?? 300,
+      options?.includedRefs ?? [],
+      options?.excludedRefs ?? [],
+    ] as const,
   commitDetail: (repositoryId: string, commitHash: string) =>
     ["repositories", repositoryId, "commits", commitHash] as const,
   fileDiff: (repositoryId: string, commitHash: string, filePath: string) =>
@@ -162,22 +185,26 @@ export function listBranches(repositoryId: string) {
   });
 }
 
-export function listHistory(repositoryId: string, options?: { maxCount?: number; offset?: number }) {
+export function listHistory(repositoryId: string, options?: GitCommitQueryOptions) {
   return invoke<GitCommitHistory>("list_history", {
     request: {
       repositoryId,
       maxCount: options?.maxCount,
       offset: options?.offset,
+      includedRefs: options?.includedRefs,
+      excludedRefs: options?.excludedRefs,
     },
   });
 }
 
-export function getCommitGraph(repositoryId: string, options?: { maxCount?: number; offset?: number }) {
+export function getCommitGraph(repositoryId: string, options?: GitCommitQueryOptions) {
   return invoke<GitCommitGraph>("get_commit_graph", {
     request: {
       repositoryId,
       maxCount: options?.maxCount,
       offset: options?.offset,
+      includedRefs: options?.includedRefs,
+      excludedRefs: options?.excludedRefs,
     },
   });
 }
