@@ -22,6 +22,39 @@ impl GitCommitSummary {
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct GitCommitHistory {
+    pub commits: Vec<GitCommitSummary>,
+    pub page: GitCommitPage,
+}
+
+impl GitCommitHistory {
+    pub fn new(commits: Vec<GitCommitSummary>, page: GitCommitPage) -> Self {
+        Self { commits, page }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitCommitPage {
+    pub offset: usize,
+    pub limit: usize,
+    pub total_count: usize,
+    pub has_more: bool,
+}
+
+impl GitCommitPage {
+    pub fn new(offset: usize, limit: usize, total_count: usize, loaded_count: usize) -> Self {
+        Self {
+            offset,
+            limit,
+            total_count,
+            has_more: offset.saturating_add(loaded_count) < total_count,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct GitCommitGraph {
     pub commits: Vec<GitGraphCommit>,
     pub refs: Vec<GitGraphRef>,

@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { type RefObject, useEffect, useRef, useState } from "react";
 import type { Layout } from "react-resizable-panels";
-import { useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import {
   AlertCircle,
   ChevronDown,
@@ -63,6 +63,8 @@ type FileChangeView = "tree" | "list";
 type BranchGraphRefKind = "localBranch" | "remoteBranch";
 
 const CHANGES_LAYOUT_STORAGE_KEY = "repository-detail-columns-layout";
+const HISTORY_PAGE_SIZE = 100;
+const GRAPH_PAGE_SIZE = 300;
 
 type BranchTreeRow =
   | {
@@ -291,8 +293,39 @@ function filterGraphByBranchControls(
     refs: visibleRefs,
     page: {
       ...graph.page,
-      totalCount: visibleCommits.length,
-      hasMore: false,
+    },
+  };
+}
+
+function combineGitCommitGraphPages(pages: GitCommitGraph[]) {
+  const [firstPage] = pages;
+
+  if (!firstPage) {
+    return undefined;
+  }
+
+  const commits: GitGraphCommit[] = [];
+  const commitHashes = new Set<string>();
+
+  for (const page of pages) {
+    for (const commit of page.commits) {
+      if (commitHashes.has(commit.hash)) {
+        continue;
+      }
+
+      commitHashes.add(commit.hash);
+      commits.push(commit);
+    }
+  }
+
+  const lastPage = pages[pages.length - 1] ?? firstPage;
+
+  return {
+    ...firstPage,
+    commits,
+    page: {
+      ...lastPage.page,
+      offset: 0,
     },
   };
 }
@@ -453,6 +486,9 @@ function HistoryGraphView({
   graph,
   graphRefs,
   graphRows,
+  hasNextPage,
+  isFetchingNextPage,
+  loadMoreRef,
   maxGraphLane,
   onSelectCommit,
   selectedCommitHash,
@@ -460,6 +496,9 @@ function HistoryGraphView({
   graph: GitCommitGraph;
   graphRefs: Map<string, GitGraphRef[]>;
   graphRows: Map<string, GitGraphRow>;
+  hasNextPage: boolean;
+  isFetchingNextPage: boolean;
+  loadMoreRef: RefObject<HTMLDivElement | null>;
   maxGraphLane: number;
   onSelectCommit: (commitHash: string) => void;
   selectedCommitHash?: string;
@@ -489,8 +528,10 @@ function HistoryGraphView({
         ))}
       </div>
       <div className="border-t px-3 py-2 text-xs text-muted-foreground">
+        <div ref={loadMoreRef} className="h-px w-px shrink-0" aria-hidden />
         {graph.commits.length} / {graph.page.totalCount} commits loaded
-        {graph.page.hasMore ? " · more commits available" : ""}
+        {hasNextPage ? " · more commits available" : ""}
+        {isFetchingNextPage ? " · loading older commits" : ""}
       </div>
     </div>
   );
@@ -756,6 +797,7 @@ export function ChangesPanel({ selectedRepository }: ChangesPanelProps) {
   const [expandedFileFolders, setExpandedFileFolders] = useState<Set<string>>(new Set());
   const [filteredBranchKeys, setFilteredBranchKeys] = useState<Set<string>>(new Set());
   const [hiddenBranchKeys, setHiddenBranchKeys] = useState<Set<string>>(new Set());
+  const commitLogLoadMoreRef = useRef<HTMLDivElement | null>(null);
   const appInfo = useQuery({
     queryKey: ["app-info"],
     queryFn: getAppInfo,
@@ -774,19 +816,33 @@ export function ChangesPanel({ selectedRepository }: ChangesPanelProps) {
       : ["repositories", "unselected", "branches"],
     queryFn: () => listBranches(selectedRepository?.id ?? ""),
   });
-  const historyQuery = useQuery({
+  const historyQuery = useInfiniteQuery({
     enabled: Boolean(selectedRepository),
     queryKey: selectedRepository
-      ? repositoryKeys.history(selectedRepository.id)
+      ? repositoryKeys.history(selectedRepository.id, { maxCount: HISTORY_PAGE_SIZE })
       : ["repositories", "unselected", "history"],
-    queryFn: () => listHistory(selectedRepository?.id ?? ""),
+    queryFn: ({ pageParam }) =>
+      listHistory(selectedRepository?.id ?? "", {
+        maxCount: HISTORY_PAGE_SIZE,
+        offset: pageParam,
+      }),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage) =>
+      lastPage.page.hasMore ? lastPage.page.offset + lastPage.commits.length : undefined,
   });
-  const graphQuery = useQuery({
+  const graphQuery = useInfiniteQuery({
     enabled: Boolean(selectedRepository),
     queryKey: selectedRepository
-      ? repositoryKeys.commitGraph(selectedRepository.id, { maxCount: 300, offset: 0 })
+      ? repositoryKeys.commitGraph(selectedRepository.id, { maxCount: GRAPH_PAGE_SIZE })
       : ["repositories", "unselected", "commitGraph"],
-    queryFn: () => getCommitGraph(selectedRepository?.id ?? "", { maxCount: 300, offset: 0 }),
+    queryFn: ({ pageParam }) =>
+      getCommitGraph(selectedRepository?.id ?? "", {
+        maxCount: GRAPH_PAGE_SIZE,
+        offset: pageParam,
+      }),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage) =>
+      lastPage.page.hasMore ? lastPage.page.offset + lastPage.commits.length : undefined,
   });
   const commitDetailQuery = useQuery({
     enabled: Boolean(selectedRepository && selectedCommitHash),
@@ -807,8 +863,10 @@ export function ChangesPanel({ selectedRepository }: ChangesPanelProps) {
   });
   const branchRows = buildBranchTreeRows(branchesQuery.data ?? [], expandedBranchFolders);
   const fileRows = buildFileTreeRows(commitDetailQuery.data?.files ?? [], expandedFileFolders);
-  const graphData = graphQuery.data
-    ? filterGraphByBranchControls(graphQuery.data, filteredBranchKeys, hiddenBranchKeys)
+  const historyCommits = historyQuery.data?.pages.flatMap((page) => page.commits) ?? [];
+  const rawGraphData = combineGitCommitGraphPages(graphQuery.data?.pages ?? []);
+  const graphData = rawGraphData
+    ? filterGraphByBranchControls(rawGraphData, filteredBranchKeys, hiddenBranchKeys)
     : undefined;
   const graphRows = graphData ? computeGitGraphRows(graphData.commits) : new Map<string, GitGraphRow>();
   const maxGraphLane = getMaxGraphLane(graphRows);
@@ -839,6 +897,57 @@ export function ChangesPanel({ selectedRepository }: ChangesPanelProps) {
   useEffect(() => {
     setExpandedFileFolders(getFileFolderPaths(commitDetailQuery.data?.files ?? []));
   }, [commitDetailQuery.data?.files]);
+
+  useEffect(() => {
+    const loadMoreElement = commitLogLoadMoreRef.current;
+
+    if (!loadMoreElement || !selectedRepository) {
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (!entries.some((entry) => entry.isIntersecting)) {
+          return;
+        }
+
+        if (
+          historyView === "list" &&
+          historyQuery.hasNextPage &&
+          !historyQuery.isFetchingNextPage
+        ) {
+          void historyQuery.fetchNextPage();
+          return;
+        }
+
+        if (
+          historyView === "graph" &&
+          graphQuery.hasNextPage &&
+          !graphQuery.isFetchingNextPage
+        ) {
+          void graphQuery.fetchNextPage();
+        }
+      },
+      {
+        rootMargin: "240px 0px",
+      },
+    );
+
+    observer.observe(loadMoreElement);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [
+    graphQuery,
+    graphQuery.hasNextPage,
+    graphQuery.isFetchingNextPage,
+    historyQuery,
+    historyQuery.hasNextPage,
+    historyQuery.isFetchingNextPage,
+    historyView,
+    selectedRepository,
+  ]);
 
   function toggleBranchFolder(path: string) {
     setExpandedBranchFolders((current) => {
@@ -1168,7 +1277,7 @@ export function ChangesPanel({ selectedRepository }: ChangesPanelProps) {
             <AlertCircle className="mt-0.5 size-4 shrink-0" />
             <span>{getErrorMessage(graphQuery.error)}</span>
           </p>
-        ) : historyView === "list" && historyQuery.data?.length === 0 ? (
+        ) : historyView === "list" && historyCommits.length === 0 ? (
           <p className="text-sm text-muted-foreground">No commits found.</p>
         ) : historyView === "graph" && graphData?.commits.length === 0 ? (
           <p className="text-sm text-muted-foreground">No commits found.</p>
@@ -1177,46 +1286,61 @@ export function ChangesPanel({ selectedRepository }: ChangesPanelProps) {
             graph={graphData}
             graphRefs={graphRefs}
             graphRows={graphRows}
+            hasNextPage={graphQuery.hasNextPage}
+            isFetchingNextPage={graphQuery.isFetchingNextPage}
+            loadMoreRef={commitLogLoadMoreRef}
             maxGraphLane={maxGraphLane}
             onSelectCommit={setSelectedCommitHash}
             selectedCommitHash={selectedCommitHash}
           />
         ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-28">Hash</TableHead>
-                <TableHead>Message</TableHead>
-                <TableHead className="w-40">Author</TableHead>
-                <TableHead className="w-48">Date</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {historyQuery.data?.map((commit) => {
-                const isSelected = commit.hash === selectedCommitHash;
+          <div className="grid gap-2">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-28">Hash</TableHead>
+                  <TableHead>Message</TableHead>
+                  <TableHead className="w-40">Author</TableHead>
+                  <TableHead className="w-48">Date</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {historyCommits.map((commit) => {
+                  const isSelected = commit.hash === selectedCommitHash;
 
-                return (
-                  <TableRow
-                    className="cursor-pointer data-[selected=true]:bg-muted"
-                    data-selected={isSelected}
-                    key={commit.hash}
-                    onClick={() => setSelectedCommitHash(commit.hash)}
-                  >
-                    <TableCell className="font-mono text-xs text-muted-foreground">
-                      {getShortHash(commit.hash)}
-                    </TableCell>
-                    <TableCell className="max-w-0 truncate">{commit.message}</TableCell>
-                    <TableCell className="max-w-0 truncate text-muted-foreground">
-                      {commit.author}
-                    </TableCell>
-                    <TableCell className="font-mono text-xs text-muted-foreground">
-                      {commit.date}
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
+                  return (
+                    <TableRow
+                      className="cursor-pointer data-[selected=true]:bg-muted"
+                      data-selected={isSelected}
+                      key={commit.hash}
+                      onClick={() => setSelectedCommitHash(commit.hash)}
+                    >
+                      <TableCell className="font-mono text-xs text-muted-foreground">
+                        {getShortHash(commit.hash)}
+                      </TableCell>
+                      <TableCell className="max-w-0 truncate">{commit.message}</TableCell>
+                      <TableCell className="max-w-0 truncate text-muted-foreground">
+                        {commit.author}
+                      </TableCell>
+                      <TableCell className="font-mono text-xs text-muted-foreground">
+                        {commit.date}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+            <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+              <div ref={commitLogLoadMoreRef} className="h-px w-px shrink-0" aria-hidden />
+              <span>
+                {historyCommits.length} /{" "}
+                {historyQuery.data?.pages[historyQuery.data.pages.length - 1]?.page.totalCount ??
+                  historyCommits.length}{" "}
+                commits loaded
+                {historyQuery.isFetchingNextPage ? " · loading older commits" : ""}
+              </span>
+            </div>
+          </div>
         )}
       </div>
     </section>

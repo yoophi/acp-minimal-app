@@ -1,8 +1,10 @@
 use crate::{
     application::ports::{GitHistoryReader, RepositoryStore},
-    domain::commit::{GitCommitDetail, GitCommitGraph, GitCommitSummary, GitFileDiff},
+    domain::commit::{GitCommitDetail, GitCommitGraph, GitCommitHistory, GitFileDiff},
 };
 
+const DEFAULT_HISTORY_LIMIT: usize = 100;
+const MAX_HISTORY_LIMIT: usize = 500;
 const DEFAULT_GRAPH_LIMIT: usize = 300;
 const MAX_GRAPH_LIMIT: usize = 500;
 
@@ -24,10 +26,19 @@ where
         Self { store, reader }
     }
 
-    pub fn list_history(&self, repository_id: String) -> Result<Vec<GitCommitSummary>, String> {
+    pub fn list_history(
+        &self,
+        repository_id: String,
+        max_count: Option<usize>,
+        offset: Option<usize>,
+    ) -> Result<GitCommitHistory, String> {
         let repository_path = self.registered_repository_path(repository_id)?;
+        let limit = max_count
+            .unwrap_or(DEFAULT_HISTORY_LIMIT)
+            .clamp(1, MAX_HISTORY_LIMIT);
+        let offset = offset.unwrap_or(0);
 
-        self.reader.list_history(&repository_path)
+        self.reader.list_history(&repository_path, limit, offset)
     }
 
     pub fn get_commit_graph(
@@ -109,7 +120,10 @@ mod tests {
     use crate::{
         application::ports::{GitHistoryReader, RepositoryStore},
         domain::{
-            commit::{GitCommitDetail, GitCommitFileChange, GitCommitSummary, GitFileDiff},
+            commit::{
+                GitCommitDetail, GitCommitFileChange, GitCommitHistory, GitCommitPage,
+                GitCommitSummary, GitFileDiff,
+            },
             repository::Repository,
         },
     };
@@ -137,8 +151,24 @@ mod tests {
     }
 
     impl GitHistoryReader for StaticHistoryReader {
-        fn list_history(&self, _repository_path: &str) -> Result<Vec<GitCommitSummary>, String> {
-            Ok(self.commits.clone())
+        fn list_history(
+            &self,
+            _repository_path: &str,
+            limit: usize,
+            offset: usize,
+        ) -> Result<GitCommitHistory, String> {
+            let commits = self
+                .commits
+                .iter()
+                .skip(offset)
+                .take(limit)
+                .cloned()
+                .collect::<Vec<_>>();
+
+            Ok(GitCommitHistory::new(
+                commits.clone(),
+                GitCommitPage::new(offset, limit, self.commits.len(), commits.len()),
+            ))
         }
 
         fn get_commit_graph(
@@ -197,7 +227,7 @@ mod tests {
             },
         );
 
-        let result = service.list_history("/tmp/repo".to_string());
+        let result = service.list_history("/tmp/repo".to_string(), None, None);
 
         assert_eq!(result.unwrap_err(), "Repository is not registered.");
     }
@@ -227,10 +257,54 @@ mod tests {
 
         assert_eq!(
             service
-                .list_history("/tmp/repo".to_string())
+                .list_history("/tmp/repo".to_string(), Some(100), Some(0))
                 .expect("history should be returned"),
-            commits
+            GitCommitHistory::new(
+                commits.clone(),
+                GitCommitPage::new(0, 100, commits.len(), commits.len()),
+            )
         );
+    }
+
+    #[test]
+    fn returns_paged_history_for_registered_repository() {
+        let store = MemoryStore::default();
+        store
+            .save_all(&[Repository::new(
+                "/tmp/repo".to_string(),
+                "repo".to_string(),
+                "/tmp/repo".to_string(),
+            )])
+            .expect("repository should be stored");
+        let commits = vec![
+            GitCommitSummary::new(
+                "abc123".to_string(),
+                "Initial commit".to_string(),
+                "A Developer".to_string(),
+                "2026-06-25T00:00:00+09:00".to_string(),
+            ),
+            GitCommitSummary::new(
+                "def456".to_string(),
+                "Add feature".to_string(),
+                "B Developer".to_string(),
+                "2026-06-25T01:00:00+09:00".to_string(),
+            ),
+        ];
+        let service = HistoryService::new(
+            store,
+            StaticHistoryReader {
+                commits: commits.clone(),
+            },
+        );
+
+        let history = service
+            .list_history("/tmp/repo".to_string(), Some(1), Some(1))
+            .expect("history should be returned");
+
+        assert_eq!(history.commits, vec![commits[1].clone()]);
+        assert_eq!(history.page.limit, 1);
+        assert_eq!(history.page.offset, 1);
+        assert!(!history.page.has_more);
     }
 
     #[test]

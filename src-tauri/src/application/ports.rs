@@ -1,6 +1,6 @@
 use crate::domain::{
     branch::GitBranch,
-    commit::{GitCommitDetail, GitCommitGraph, GitCommitSummary, GitFileDiff},
+    commit::{GitCommitDetail, GitCommitGraph, GitCommitHistory, GitFileDiff},
     repository::Repository,
     repository_event::RepositoryChangeEvent,
     worktree::GitWorktree,
@@ -24,7 +24,12 @@ pub trait GitBranchReader {
 }
 
 pub trait GitHistoryReader {
-    fn list_history(&self, repository_path: &str) -> Result<Vec<GitCommitSummary>, String>;
+    fn list_history(
+        &self,
+        repository_path: &str,
+        limit: usize,
+        offset: usize,
+    ) -> Result<GitCommitHistory, String>;
     fn get_commit_graph(
         &self,
         repository_path: &str,

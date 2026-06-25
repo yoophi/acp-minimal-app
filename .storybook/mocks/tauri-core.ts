@@ -60,8 +60,22 @@ export async function invoke<T>(command: string, args?: Record<string, unknown>)
       return sampleWorktrees as T;
     case "list_branches":
       return sampleBranches as T;
-    case "list_history":
-      return sampleHistory as T;
+    case "list_history": {
+      const request = args?.request as { maxCount?: number; offset?: number } | undefined;
+      const offset = request?.offset ?? 0;
+      const limit = request?.maxCount ?? 100;
+      const commits = sampleHistory.slice(offset, offset + limit);
+
+      return {
+        commits,
+        page: {
+          offset,
+          limit,
+          totalCount: sampleHistory.length,
+          hasMore: offset + commits.length < sampleHistory.length,
+        },
+      } as T;
+    }
     case "get_commit_graph":
       return sampleCommitGraph as T;
     case "get_commit_detail":

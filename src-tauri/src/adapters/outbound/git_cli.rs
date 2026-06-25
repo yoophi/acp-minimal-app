@@ -7,8 +7,9 @@ use crate::{
     domain::{
         branch::GitBranch,
         commit::{
-            GitCommitDetail, GitCommitFileChange, GitCommitGraph, GitCommitSummary, GitFileDiff,
-            GitGraphCommit, GitGraphLayoutHints, GitGraphPage, GitGraphRef, GitGraphRefKind,
+            GitCommitDetail, GitCommitFileChange, GitCommitGraph, GitCommitHistory, GitCommitPage,
+            GitCommitSummary, GitFileDiff, GitGraphCommit, GitGraphLayoutHints, GitGraphPage,
+            GitGraphRef, GitGraphRefKind,
         },
         worktree::GitWorktree,
     },
@@ -94,14 +95,30 @@ impl GitBranchReader for GitCliRepositoryValidator {
 }
 
 impl GitHistoryReader for GitCliRepositoryValidator {
-    fn list_history(&self, repository_path: &str) -> Result<Vec<GitCommitSummary>, String> {
+    fn list_history(
+        &self,
+        repository_path: &str,
+        limit: usize,
+        offset: usize,
+    ) -> Result<GitCommitHistory, String> {
+        let total_count = git_head_commit_count(repository_path)?;
+
+        if total_count == 0 {
+            return Ok(GitCommitHistory::new(
+                Vec::new(),
+                GitCommitPage::new(offset, limit, total_count, 0),
+            ));
+        }
+
         let output = Command::new("git")
             .args([
                 "-C",
                 repository_path,
                 "log",
-                "--max-count=100",
                 "--pretty=format:%H%x00%s%x00%an%x00%cI%x1e",
+                &format!("--skip={offset}"),
+                "-n",
+                &limit.to_string(),
             ])
             .output()
             .map_err(|error| format!("Failed to run git: {error}"))?;
@@ -115,8 +132,13 @@ impl GitHistoryReader for GitCliRepositoryValidator {
 
         let stdout = String::from_utf8(output.stdout)
             .map_err(|error| format!("Git returned invalid UTF-8: {error}"))?;
+        let commits = parse_commit_history(&stdout)?;
+        let loaded_count = commits.len();
 
-        parse_commit_history(&stdout)
+        Ok(GitCommitHistory::new(
+            commits,
+            GitCommitPage::new(offset, limit, total_count, loaded_count),
+        ))
     }
 
     fn get_commit_graph(
@@ -295,6 +317,28 @@ fn git_commit_count(repository_path: &str) -> Result<usize, String> {
             "--all",
             "--count",
         ])
+        .output()
+        .map_err(|error| format!("Failed to run git: {error}"))?;
+
+    if !output.status.success() {
+        return Err(git_error_message(
+            &output.stderr,
+            "Failed to count Git commits.",
+        ));
+    }
+
+    let stdout = String::from_utf8(output.stdout)
+        .map_err(|error| format!("Git returned invalid UTF-8: {error}"))?;
+
+    stdout
+        .trim()
+        .parse::<usize>()
+        .map_err(|error| format!("Git commit count is invalid: {error}"))
+}
+
+fn git_head_commit_count(repository_path: &str) -> Result<usize, String> {
+    let output = Command::new("git")
+        .args(["-C", repository_path, "rev-list", "--count", "HEAD"])
         .output()
         .map_err(|error| format!("Failed to run git: {error}"))?;
 

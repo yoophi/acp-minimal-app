@@ -16,7 +16,7 @@ use crate::{
     },
     domain::{
         branch::GitBranch,
-        commit::{GitCommitDetail, GitCommitGraph, GitCommitSummary, GitFileDiff},
+        commit::{GitCommitDetail, GitCommitGraph, GitCommitHistory, GitFileDiff},
         repository::Repository,
         worktree::GitWorktree,
     },
@@ -58,6 +58,14 @@ pub struct RenameRepositoryRequest {
 #[serde(rename_all = "camelCase")]
 pub struct RepositoryRequest {
     repository_id: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListHistoryRequest {
+    repository_id: String,
+    max_count: Option<usize>,
+    offset: Option<usize>,
 }
 
 #[derive(Deserialize)]
@@ -133,9 +141,9 @@ pub fn list_branches(app: AppHandle, request: RepositoryRequest) -> Result<Vec<G
 #[tauri::command]
 pub fn list_history(
     app: AppHandle,
-    request: RepositoryRequest,
-) -> Result<Vec<GitCommitSummary>, String> {
-    history_service(app)?.list_history(request.repository_id)
+    request: ListHistoryRequest,
+) -> Result<GitCommitHistory, String> {
+    history_service(app)?.list_history(request.repository_id, request.max_count, request.offset)
 }
 
 #[tauri::command]

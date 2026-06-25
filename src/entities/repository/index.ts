@@ -19,6 +19,8 @@ export type {
   GitBranch,
   GitCommitDetail,
   GitCommitFileChange,
+  GitCommitHistory,
+  GitCommitPage,
   GitCommitGraph,
   GitCommitSummary,
   GitFileDiff,
