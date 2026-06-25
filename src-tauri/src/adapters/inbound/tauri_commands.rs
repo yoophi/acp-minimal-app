@@ -5,8 +5,8 @@ use crate::{
     adapters::outbound::{
         git_cli::GitCliRepositoryValidator, json_repository_store::JsonRepositoryStore,
     },
-    application::repository_service::RepositoryService,
-    domain::repository::Repository,
+    application::{repository_service::RepositoryService, worktree_service::WorktreeService},
+    domain::{repository::Repository, worktree::GitWorktree},
 };
 
 #[derive(Serialize)]
@@ -20,6 +20,12 @@ pub struct AppInfo {
 #[serde(rename_all = "camelCase")]
 pub struct CreateRepositoryRequest {
     path: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListWorktreesRequest {
+    repository_id: String,
 }
 
 #[tauri::command]
@@ -43,15 +49,39 @@ pub fn create_repository(
     repository_service(app)?.create_repository(request.path)
 }
 
+#[tauri::command]
+pub fn list_worktrees(
+    app: AppHandle,
+    request: ListWorktreesRequest,
+) -> Result<Vec<GitWorktree>, String> {
+    worktree_service(app)?.list_worktrees(request.repository_id)
+}
+
 fn repository_service(
     app: AppHandle,
 ) -> Result<RepositoryService<JsonRepositoryStore, GitCliRepositoryValidator>, String> {
+    let store = repository_store(app)?;
+    let validator = GitCliRepositoryValidator;
+
+    Ok(RepositoryService::new(store, validator))
+}
+
+fn worktree_service(
+    app: AppHandle,
+) -> Result<WorktreeService<JsonRepositoryStore, GitCliRepositoryValidator>, String> {
+    let store = repository_store(app)?;
+    let reader = GitCliRepositoryValidator;
+
+    Ok(WorktreeService::new(store, reader))
+}
+
+fn repository_store(app: AppHandle) -> Result<JsonRepositoryStore, String> {
     let app_data_dir = app
         .path()
         .app_data_dir()
         .map_err(|error| format!("Failed to resolve app data directory: {error}"))?;
-    let store = JsonRepositoryStore::new(app_data_dir.join("repositories.json"));
-    let validator = GitCliRepositoryValidator;
 
-    Ok(RepositoryService::new(store, validator))
+    Ok(JsonRepositoryStore::new(
+        app_data_dir.join("repositories.json"),
+    ))
 }
