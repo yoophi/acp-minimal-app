@@ -8,20 +8,26 @@
     "dev": "turbo run dev --filter=@yoophi/agentic-workbench",
     "dev:workbench": "turbo run dev --filter=@yoophi/agentic-workbench",
     "dev:annotator": "turbo run dev --filter=@yoophi/markdown-annotator",
+    "dev:git": "turbo run dev --filter=@yoophi/git-explorer",
     "build": "turbo run build",
     "check-types": "turbo run check-types",
     "test": "turbo run test",
     "preview": "turbo run preview --filter=@yoophi/agentic-workbench",
     "preview:workbench": "turbo run preview --filter=@yoophi/agentic-workbench",
     "preview:annotator": "turbo run preview --filter=@yoophi/markdown-annotator",
+    "preview:git": "turbo run preview --filter=@yoophi/git-explorer",
     "storybook:annotator": "turbo run storybook --filter=@yoophi/markdown-annotator",
+    "storybook:git": "turbo run storybook --filter=@yoophi/git-explorer",
     "build-storybook:annotator": "turbo run build-storybook --filter=@yoophi/markdown-annotator",
+    "build-storybook:git": "turbo run build-storybook --filter=@yoophi/git-explorer",
     "tauri": "turbo run tauri --filter=@yoophi/agentic-workbench --",
     "tauri:workbench": "turbo run tauri --filter=@yoophi/agentic-workbench --",
     "tauri:annotator": "turbo run tauri --filter=@yoophi/markdown-annotator --",
+    "tauri:git": "turbo run tauri --filter=@yoophi/git-explorer --",
     "tauri:dev": "turbo run tauri:dev --filter=@yoophi/agentic-workbench --",
     "tauri:dev:workbench": "turbo run tauri:dev --filter=@yoophi/agentic-workbench --",
-    "tauri:dev:annotator": "turbo run tauri:dev --filter=@yoophi/markdown-annotator --"
+    "tauri:dev:annotator": "turbo run tauri:dev --filter=@yoophi/markdown-annotator --",
+    "tauri:dev:git": "turbo run tauri:dev --filter=@yoophi/git-explorer --"
   },
   "devDependencies": {
     "turbo": "^2.5.8"

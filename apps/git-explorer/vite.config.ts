@@ -4,7 +4,7 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 
 const host = process.env.TAURI_DEV_HOST;
-const port = Number.parseInt(process.env.DEV_PORT ?? "1420", 10);
+const port = Number.parseInt(process.env.DEV_PORT ?? "1422", 10);
 const strictPort = process.env.DEV_STRICT_PORT === "true";
 
 export default defineConfig(() => ({

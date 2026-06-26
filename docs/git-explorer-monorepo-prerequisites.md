@@ -326,18 +326,39 @@ flowchart LR
 ## 선행 작업 체크리스트
 
 - [ ] `acp-minimal-app-main/` 처리 방향 결정
-- [ ] 현재 앱 경로와 package 이름 유지 여부 결정
-- [ ] `tauri-git-explorer` 이전 대상 경로와 package 이름 결정
+- [x] 현재 앱 경로와 package 이름 유지 여부 결정
+- [x] `tauri-git-explorer` 이전 대상 경로와 package 이름 결정
 - [x] 루트 package 이름을 `agentic-workspace`로 사용
-- [ ] 앱별 root script 이름 추가
-- [ ] `pnpm-workspace.yaml`의 `allowBuilds` 병합 여부 확인
+- [x] 앱별 root script 이름 추가
+- [x] `pnpm-workspace.yaml`의 `allowBuilds` 병합 여부 확인
 - [ ] `packages/git-model` 운영 기준 문서화
-- [ ] `packages/ui`를 이전 앱 빌드용으로만 둘지 결정
+- [x] `packages/ui`를 이전 앱 빌드용으로만 둘지 결정
 - [ ] 루트 Rust workspace 도입 여부 결정
 - [ ] `crates/git-core` 책임 범위 확정
 - [ ] 현재 Git domain과 git explorer Git domain 충돌 맵 작성
 - [ ] 앱별 Tauri command adapter 유지 원칙 확정
 - [ ] Turbo/CI 검증 범위 기준 확정
+
+## 2026-06-26 진행 기록
+
+`origin/main` 기준 새 브랜치에서 `tauri-git-explorer`의 추적 중인 앱 파일과 UI 패키지를 subtree 방식으로 가져왔다.
+
+- `apps/desktop` split 이력을 `apps/git-explorer`로 병합했다.
+- `packages/ui` split 이력을 `packages/ui`로 병합했다.
+- Git explorer 앱 package 이름을 `@yoophi/git-explorer`로 정리했다.
+- Tauri/Rust package와 product 이름을 `git-explorer`로 정리했다.
+- 기존 `agentic-workbench` 기본 포트 `1420`, `markdown-annotator` 기본 포트 `1421`과 충돌하지 않도록 `git-explorer` 기본 dev port를 `1422`로 설정했다.
+- 루트 script에 `dev:git`, `preview:git`, `storybook:git`, `build-storybook:git`, `tauri:git`, `tauri:dev:git`을 추가했다.
+- `packages/ui`는 현재 `git-explorer` 빌드용 의존성으로만 편입했고, `agentic-workbench`에는 연결하지 않았다.
+
+검증 결과:
+
+- `pnpm --filter @yoophi/git-explorer check-types`
+- `pnpm --filter @yoophi/ui check-types`
+- `pnpm --filter @yoophi/git-explorer build`
+- `pnpm check-types`
+- `cargo check --manifest-path apps/git-explorer/src-tauri/Cargo.toml`
+- `cargo test --manifest-path apps/git-explorer/src-tauri/Cargo.toml` (34개 통과)
 
 ## 결론
 

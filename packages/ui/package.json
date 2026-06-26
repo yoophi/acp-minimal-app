@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "scripts": {
+    "check-types": "tsc --noEmit"
+  },
   "exports": {
     "./components/*": "./src/components/*.tsx",
     "./lib/utils": "./src/lib/utils.ts",

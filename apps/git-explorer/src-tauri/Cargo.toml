@@ -1,12 +1,12 @@
 [package]
-name = "tauri-git-explorer"
+name = "git-explorer"
 version = "0.1.0"
 description = "A Tauri Git Explorer desktop app"
 authors = ["you"]
 edition = "2021"
 
 [lib]
-name = "tauri_git_explorer_lib"
+name = "git_explorer_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
