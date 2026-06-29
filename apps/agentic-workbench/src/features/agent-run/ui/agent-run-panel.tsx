@@ -11,6 +11,7 @@ import {
   ArrowUpIcon,
   BotIcon,
   CheckCircleIcon,
+  ChevronDownIcon,
   ClockIcon,
   InfoIcon,
   Loader2Icon,
@@ -90,6 +91,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Message, MessageAvatar, MessageContent } from "@/components/ui/message";
 import {
@@ -132,6 +139,18 @@ const GOAL_CONTINUATION_DELAY_MS = 800;
 const TIMELINE_ESTIMATED_ITEM_HEIGHT = 96;
 const TIMELINE_ITEM_GAP = 12;
 const TIMELINE_OVERSCAN = 6;
+
+type TimelineRenderItem =
+  | {
+      id: string;
+      kind: "item";
+      item: TimelineItem;
+    }
+  | {
+      id: string;
+      kind: "tool-group";
+      items: TimelineItem[];
+    };
 
 const permissionModeOptions: Array<{
   value: PermissionMode;
@@ -683,6 +702,13 @@ export function AgentRunPanel({
   const canSteerPrompt = Boolean(
     activeRunId && isRunning && directPrompt?.trim() && prompt.trim(),
   );
+  const shouldQueueSendPrompt = Boolean(
+    activeRunId &&
+      isRunning &&
+      !isAwaitingPromptResponse &&
+      queuedPrompts.length > 0,
+  );
+  const canSendPrompt = shouldQueueSendPrompt ? canQueuePrompt : canSteerPrompt;
   const canCancel = Boolean(activeRunId && isRunning);
 
   async function run() {
@@ -887,6 +913,15 @@ export function AgentRunPanel({
       setQueuedPrompts(queuedPromptsToKeep);
       setIsAwaitingPromptResponse(wasAwaitingPromptResponse);
     }
+  }
+
+  function sendPrompt() {
+    if (shouldQueueSendPrompt) {
+      enqueuePrompt();
+      return;
+    }
+
+    void steer();
   }
 
   async function steerQueuedPrompt(queuedPrompt: QueuedPrompt) {
@@ -1177,7 +1212,9 @@ export function AgentRunPanel({
           onValueChange={setPrompt}
           onSubmit={() => {
             if (inputMode === "prompt" && isRunning) {
-              enqueuePrompt();
+              if (canSendPrompt) {
+                sendPrompt();
+              }
               return;
             }
             if (!isRunning && canStartRun) {
@@ -1266,6 +1303,21 @@ export function AgentRunPanel({
                   : "선택한 worktree에서 실행할 작업을 입력하세요."
               }
               className="h-full min-h-0 resize-none overflow-auto px-4"
+              onKeyDown={(event) => {
+                if (
+                  event.key === "Tab" &&
+                  !event.shiftKey &&
+                  !event.metaKey &&
+                  !event.ctrlKey &&
+                  !event.altKey &&
+                  inputMode === "prompt" &&
+                  isRunning &&
+                  canQueuePrompt
+                ) {
+                  event.preventDefault();
+                  enqueuePrompt();
+                }
+              }}
             />
           </div>
           {inputMode === "prompt" && queuedPrompts.length > 0 && (
@@ -1467,29 +1519,47 @@ export function AgentRunPanel({
                 )
               ) : isRunning ? (
                 <>
-                  <PromptInputAction tooltip="Queue prompt">
-                    <Button
-                      type="button"
-                      size="sm"
-                      disabled={!canQueuePrompt}
-                      onClick={() => enqueuePrompt()}
-                    >
-                      <PlayIcon data-icon="inline-start" />
-                      Queue
-                    </Button>
-                  </PromptInputAction>
-                  <PromptInputAction tooltip="Cancel and steer">
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="secondary"
-                      disabled={!canSteerPrompt}
-                      onClick={() => void steer()}
-                    >
-                      <PencilIcon data-icon="inline-start" />
-                      Steer
-                    </Button>
-                  </PromptInputAction>
+                  <div className="inline-flex shrink-0 items-center">
+                    <PromptInputAction tooltip="Send">
+                      <Button
+                        type="button"
+                        size="sm"
+                        disabled={!canSendPrompt}
+                        className="rounded-r-none border-r border-primary-foreground/20"
+                        onClick={sendPrompt}
+                      >
+                        Send
+                      </Button>
+                    </PromptInputAction>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          type="button"
+                          size="icon-sm"
+                          disabled={!canSteerPrompt && !canQueuePrompt}
+                          className="rounded-l-none"
+                          aria-label="Send 옵션"
+                          onClick={(event) => event.stopPropagation()}
+                        >
+                          <ChevronDownIcon className="size-3" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="min-w-32">
+                        <DropdownMenuItem
+                          disabled={!canSendPrompt}
+                          onSelect={sendPrompt}
+                        >
+                          Send
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          disabled={!canQueuePrompt}
+                          onSelect={() => enqueuePrompt()}
+                        >
+                          Queue
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
                   <PromptInputAction tooltip="Cancel run">
                     <Button
                       type="button"
@@ -1980,6 +2050,7 @@ function VirtualizedRunTimeline({
   const [viewportHeight, setViewportHeight] = useState(0);
   const [scrollTop, setScrollTop] = useState(0);
   const [measuredHeights, setMeasuredHeights] = useState<Record<string, number>>({});
+  const renderItems = useMemo(() => groupTimelineRenderItems(items), [items]);
 
   useEffect(() => {
     const scrollElement = scrollParentRef.current;
@@ -2019,13 +2090,13 @@ function VirtualizedRunTimeline({
 
   const itemLayouts = useMemo(() => {
     let offset = 0;
-    return items.map((item) => {
+    return renderItems.map((item) => {
       const height = measuredHeights[item.id] ?? TIMELINE_ESTIMATED_ITEM_HEIGHT;
       const layout = { item, height, start: offset, end: offset + height };
       offset += height + TIMELINE_ITEM_GAP;
       return layout;
     });
-  }, [items, measuredHeights]);
+  }, [renderItems, measuredHeights]);
 
   const totalHeight = itemLayouts.length
     ? itemLayouts[itemLayouts.length - 1].end
@@ -2105,7 +2176,7 @@ function MeasuredRunEventItem({
   top,
   onHeightChange,
 }: {
-  item: TimelineItem;
+  item: TimelineRenderItem;
   top: number;
   onHeightChange: (itemId: string, height: number) => void;
 }) {
@@ -2136,9 +2207,48 @@ function MeasuredRunEventItem({
       className="absolute left-0 right-0"
       style={{ transform: `translateY(${top}px)` }}
     >
-      <RunEventItem item={item} />
+      <RunEventRenderItem item={item} />
     </div>
   );
+}
+
+function groupTimelineRenderItems(items: TimelineItem[]): TimelineRenderItem[] {
+  const result: TimelineRenderItem[] = [];
+  let toolGroup: TimelineItem[] = [];
+
+  const flushToolGroup = () => {
+    if (!toolGroup.length) {
+      return;
+    }
+
+    result.push({
+      id: `tool-group:${toolGroup.map((item) => item.id).join(":")}`,
+      kind: "tool-group",
+      items: toolGroup,
+    });
+    toolGroup = [];
+  };
+
+  for (const item of items) {
+    if (item.group === "tool_call/tool_result") {
+      toolGroup.push(item);
+      continue;
+    }
+
+    flushToolGroup();
+    result.push({ id: item.id, kind: "item", item });
+  }
+
+  flushToolGroup();
+  return result;
+}
+
+function RunEventRenderItem({ item }: { item: TimelineRenderItem }) {
+  if (item.kind === "tool-group") {
+    return <ToolStepGroup items={item.items} />;
+  }
+
+  return <RunEventItem item={item.item} />;
 }
 
 function PermissionRequestDialog({
@@ -2313,7 +2423,7 @@ function ToolStep({ item }: { item: TimelineItem }) {
   const toolCallId = tool?.toolCallId;
 
   return (
-    <div className="space-y-4">
+    <div>
       <Steps className="" defaultOpen={false}>
         <StepsTrigger leftIcon={<ToolStatusIcon status={status} />} swapIconOnHover={false}>
           <span className="flex min-w-0 w-full flex-wrap items-start gap-x-2 gap-y-1 text-left">
@@ -2338,6 +2448,16 @@ function ToolStep({ item }: { item: TimelineItem }) {
           )}
         </StepsContent>
       </Steps>
+    </div>
+  );
+}
+
+function ToolStepGroup({ items }: { items: TimelineItem[] }) {
+  return (
+    <div className="ml-11 space-y-3 border-l-[6px] border-border pl-2">
+      {items.map((item) => (
+        <ToolStep key={item.id} item={item} />
+      ))}
     </div>
   );
 }
