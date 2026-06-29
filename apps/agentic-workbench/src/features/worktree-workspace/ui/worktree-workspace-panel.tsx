@@ -13,7 +13,10 @@ import {
   GitPullRequestIcon,
   ListTreeIcon,
   Loader2Icon,
+  MessageSquareIcon,
+  PencilLineIcon,
   RefreshCwIcon,
+  Trash2Icon,
 } from "lucide-react";
 import {
   Group as ResizablePanelGroup,
@@ -24,6 +27,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Markdown } from "@/components/ui/markdown";
+import { Textarea } from "@/components/ui/textarea";
 import type { GitWorktree } from "@/entities/project/model/git-worktree";
 import { worktreeFileQueryKeys } from "@/entities/worktree-file/api/query-keys";
 import {
@@ -50,6 +54,13 @@ import {
   type GitGraphRow,
   type GitGraphSegment,
 } from "@/features/worktree-workspace/model/git-graph-layout";
+import { formatAnnotationsForAgent } from "@/features/markdown-annotation/model/format-annotations-for-agent";
+import { parseMarkdownToBlocks } from "@/features/markdown-annotation/model/parse-markdown-to-blocks";
+import type {
+  AnnotationDraft,
+  AnnotationType,
+  MarkdownBlock,
+} from "@/features/markdown-annotation/model/types";
 import { cn } from "@/lib/utils";
 import { EllipsisPopoverText } from "@/shared/ui/ellipsis-popover-text";
 
@@ -697,6 +708,10 @@ function FileWorkspaceTab({ worktree }: { worktree: GitWorktree }) {
 function MarkdownWorkspaceTab({ worktree }: { worktree: GitWorktree }) {
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(() => new Set());
   const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null);
+  const [annotationsByFile, setAnnotationsByFile] = useState<Record<string, AnnotationDraft[]>>({});
+  const [draftBlock, setDraftBlock] = useState<MarkdownBlock | null>(null);
+  const [draftType, setDraftType] = useState<AnnotationType>("note");
+  const [draftComment, setDraftComment] = useState("");
   const filesQuery = useQuery({
     queryKey: worktreeFileQueryKeys.list(worktree.path),
     queryFn: () => listWorktreeFiles(worktree.path),
@@ -716,6 +731,21 @@ function MarkdownWorkspaceTab({ worktree }: { worktree: GitWorktree }) {
       : worktreeFileQueryKeys.textFile(worktree.path, ""),
     queryFn: () => readWorktreeTextFile(worktree.path, selectedFilePath ?? ""),
   });
+  const blocks = useMemo(
+    () => parseMarkdownToBlocks(previewQuery.data?.content ?? ""),
+    [previewQuery.data?.content],
+  );
+  const annotations = selectedFilePath ? (annotationsByFile[selectedFilePath] ?? []) : [];
+  const annotationPrompt = selectedFilePath
+    ? formatAnnotationsForAgent(selectedFilePath, annotations, blocks)
+    : "";
+
+  function selectMarkdownFile(path: string) {
+    setSelectedFilePath(path);
+    setDraftBlock(null);
+    setDraftComment("");
+    setDraftType("note");
+  }
 
   function toggleFolder(path: string) {
     setExpandedFolders((current) => {
@@ -727,6 +757,47 @@ function MarkdownWorkspaceTab({ worktree }: { worktree: GitWorktree }) {
       }
       return next;
     });
+  }
+
+  function saveAnnotation() {
+    if (!selectedFilePath || !draftBlock || !draftComment.trim()) {
+      return;
+    }
+
+    const annotation: AnnotationDraft = {
+      id: `${Date.now()}:${draftBlock.id}`,
+      fileName: selectedFilePath,
+      anchor: {
+        blockId: draftBlock.id,
+        startLine: draftBlock.startLine,
+        endLine: draftBlock.endLine,
+      },
+      selectedText: draftBlock.rawContent,
+      comment: draftComment.trim(),
+      type: draftType,
+      createdAt: new Date().toISOString(),
+    };
+
+    setAnnotationsByFile((current) => ({
+      ...current,
+      [selectedFilePath]: [...(current[selectedFilePath] ?? []), annotation],
+    }));
+    setDraftBlock(null);
+    setDraftComment("");
+    setDraftType("note");
+  }
+
+  function removeAnnotation(annotationId: string) {
+    if (!selectedFilePath) {
+      return;
+    }
+
+    setAnnotationsByFile((current) => ({
+      ...current,
+      [selectedFilePath]: (current[selectedFilePath] ?? []).filter(
+        (annotation) => annotation.id !== annotationId,
+      ),
+    }));
   }
 
   return (
@@ -778,7 +849,7 @@ function MarkdownWorkspaceTab({ worktree }: { worktree: GitWorktree }) {
                     row={row}
                     selected={row.relativePath === selectedFilePath}
                     onToggleFolder={toggleFolder}
-                    onSelectFile={setSelectedFilePath}
+                    onSelectFile={selectMarkdownFile}
                   />
                 ))}
               </div>
@@ -823,8 +894,123 @@ function MarkdownWorkspaceTab({ worktree }: { worktree: GitWorktree }) {
                 variant="destructive"
               />
             ) : previewQuery.data ? (
-              <div className="rounded-md border bg-background p-4">
-                <Markdown>{previewQuery.data.content}</Markdown>
+              <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_20rem]">
+                <div className="grid gap-3">
+                  {blocks.map((block) => (
+                    <MarkdownAnnotationBlock
+                      key={block.id}
+                      block={block}
+                      annotations={annotations.filter(
+                        (annotation) => annotation.anchor.blockId === block.id,
+                      )}
+                      onAnnotate={(type) => {
+                        setDraftBlock(block);
+                        setDraftType(type);
+                        setDraftComment("");
+                      }}
+                      onRemoveAnnotation={removeAnnotation}
+                    />
+                  ))}
+                </div>
+                <aside className="grid content-start gap-3">
+                  <div className="rounded-md border p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <h3 className="text-sm font-medium">Annotations</h3>
+                      <Badge variant="outline">{annotations.length}</Badge>
+                    </div>
+                    {draftBlock ? (
+                      <div className="mt-3 grid gap-2">
+                        <div className="flex rounded-md border p-0.5">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant={draftType === "note" ? "secondary" : "ghost"}
+                            onClick={() => setDraftType("note")}
+                          >
+                            Note
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant={draftType === "change-request" ? "secondary" : "ghost"}
+                            onClick={() => setDraftType("change-request")}
+                          >
+                            Change
+                          </Button>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          Lines {draftBlock.startLine}-{draftBlock.endLine}
+                        </p>
+                        <Textarea
+                          value={draftComment}
+                          onChange={(event) => setDraftComment(event.target.value)}
+                          placeholder={
+                            draftType === "change-request"
+                              ? "변경 요청 내용을 입력하세요."
+                              : "참고 메모를 입력하세요."
+                          }
+                          className="min-h-24 text-sm"
+                        />
+                        <div className="flex justify-end gap-2">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => {
+                              setDraftBlock(null);
+                              setDraftComment("");
+                            }}
+                          >
+                            Cancel
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            disabled={!draftComment.trim()}
+                            onClick={saveAnnotation}
+                          >
+                            Add
+                          </Button>
+                        </div>
+                      </div>
+                    ) : annotations.length === 0 ? (
+                      <p className="mt-3 text-sm text-muted-foreground">No annotations.</p>
+                    ) : (
+                      <div className="mt-3 grid gap-2">
+                        {annotations.map((annotation) => (
+                          <div key={annotation.id} className="rounded-md border p-2">
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="min-w-0">
+                                <Badge variant="secondary">{annotation.type}</Badge>
+                                <p className="mt-1 text-xs text-muted-foreground">
+                                  Lines {annotation.anchor.startLine}-{annotation.anchor.endLine}
+                                </p>
+                              </div>
+                              <Button
+                                type="button"
+                                size="icon-xs"
+                                variant="ghost"
+                                aria-label="Annotation 삭제"
+                                onClick={() => removeAnnotation(annotation.id)}
+                              >
+                                <Trash2Icon />
+                              </Button>
+                            </div>
+                            <p className="mt-2 break-words text-sm">{annotation.comment}</p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  {annotations.length > 0 ? (
+                    <div className="rounded-md border">
+                      <div className="border-b px-3 py-2 text-sm font-medium">Agent prompt</div>
+                      <pre className="max-h-80 overflow-auto p-3 text-xs leading-5">
+                        <code>{annotationPrompt}</code>
+                      </pre>
+                    </div>
+                  ) : null}
+                </aside>
               </div>
             ) : null}
           </div>
@@ -876,6 +1062,77 @@ function FileTreeRowButton({
         <span className="shrink-0 text-xs text-muted-foreground">{formatBytes(row.size)}</span>
       ) : null}
     </button>
+  );
+}
+
+function MarkdownAnnotationBlock({
+  block,
+  annotations,
+  onAnnotate,
+  onRemoveAnnotation,
+}: {
+  block: MarkdownBlock;
+  annotations: AnnotationDraft[];
+  onAnnotate: (type: AnnotationType) => void;
+  onRemoveAnnotation: (annotationId: string) => void;
+}) {
+  return (
+    <section
+      className={cn(
+        "group/markdown-block rounded-md border bg-background p-3",
+        annotations.length > 0 && "border-primary/30 bg-primary/5",
+      )}
+    >
+      <div className="flex items-start gap-3">
+        <div className="min-w-0 flex-1">
+          <Markdown>{block.rawContent}</Markdown>
+        </div>
+        <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover/markdown-block:opacity-100 group-focus-within/markdown-block:opacity-100">
+          <Button
+            type="button"
+            size="icon-xs"
+            variant="ghost"
+            aria-label="Note annotation 추가"
+            onClick={() => onAnnotate("note")}
+          >
+            <MessageSquareIcon />
+          </Button>
+          <Button
+            type="button"
+            size="icon-xs"
+            variant="ghost"
+            aria-label="Change request annotation 추가"
+            onClick={() => onAnnotate("change-request")}
+          >
+            <PencilLineIcon />
+          </Button>
+        </div>
+      </div>
+      {annotations.length > 0 ? (
+        <div className="mt-3 grid gap-2 border-t pt-3">
+          {annotations.map((annotation) => (
+            <div
+              key={annotation.id}
+              className="flex items-start justify-between gap-2 rounded-md bg-background px-2 py-1.5 text-sm"
+            >
+              <div className="min-w-0">
+                <Badge variant="outline">{annotation.type}</Badge>
+                <p className="mt-1 break-words text-muted-foreground">{annotation.comment}</p>
+              </div>
+              <Button
+                type="button"
+                size="icon-xs"
+                variant="ghost"
+                aria-label="Annotation 삭제"
+                onClick={() => onRemoveAnnotation(annotation.id)}
+              >
+                <Trash2Icon />
+              </Button>
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </section>
   );
 }
 
