@@ -1,4 +1,10 @@
-import type { ButtonHTMLAttributes, ComponentType, ReactElement, ReactNode } from "react";
+import type {
+  ButtonHTMLAttributes,
+  ComponentType,
+  ReactElement,
+  ReactNode,
+  TextareaHTMLAttributes,
+} from "react";
 import type { AnnotationType } from "@yoophi/markdown-annotation-core/types";
 
 /**
@@ -44,4 +50,44 @@ export type ViewerTooltipProps = {
 export type MarkdownViewerComponents = {
   Button: ComponentType<ViewerButtonProps>;
   Tooltip: ComponentType<ViewerTooltipProps>;
+};
+
+export type TypeSelectOption = {
+  value: AnnotationType;
+  label: string;
+};
+
+/**
+ * 주입되는 Dialog 셸. Dialog 합성 API가 키트마다 다르므로(base-ui `render`,
+ * radix `asChild`), title/description/footer/children을 받는 통합 계약으로 흡수한다.
+ */
+export type DialogShellProps = {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  title: ReactNode;
+  description?: ReactNode;
+  footer: ReactNode;
+  children: ReactNode;
+};
+
+/**
+ * 주입되는 타입 Select. value/options만 받는 통합 계약으로, 각 앱이 자기 Select
+ * 합성(base-ui/radix)으로 구현한다.
+ */
+export type TypeSelectProps = {
+  value: AnnotationType;
+  onValueChange: (value: AnnotationType) => void;
+  options: TypeSelectOption[];
+  ariaLabel?: string;
+};
+
+/**
+ * AnnotationInputDialog에 주입하는 UI primitive 모음.
+ * Textarea/Button은 두 앱의 소비 API가 동일하므로 그대로 주입한다.
+ */
+export type AnnotationDialogComponents = {
+  DialogShell: ComponentType<DialogShellProps>;
+  TypeSelect: ComponentType<TypeSelectProps>;
+  Textarea: ComponentType<TextareaHTMLAttributes<HTMLTextAreaElement>>;
+  Button: ComponentType<ViewerButtonProps>;
 };
