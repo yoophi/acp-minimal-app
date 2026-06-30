@@ -21,15 +21,6 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import {
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import {
   Empty,
   EmptyDescription,
   EmptyHeader,
@@ -75,21 +66,19 @@ import {
   openMarkdownDocumentTab,
 } from "@/features/open-document/openMarkdownDocument";
 import {
+  AnnotationInputDialog,
   MarkdownViewer,
+  annotationTypes,
   buildViewerAnnotationMaps,
+  getAnnotationCommentLabel as annotationCommentLabel,
+  getAnnotationCommentPlaceholder as annotationCommentPlaceholder,
   getSelectionAnchors,
+  requiresComment,
 } from "@yoophi/markdown-annotation-react";
+import { annotationDialogComponents } from "@/shared/ui/annotation-dialog-components";
 import { markdownViewerComponents } from "@/shared/ui/markdown-viewer-components";
 
 const WINDOW_HIGHLIGHT_EVENT = "markdown-annotator://window-highlight";
-
-const annotationTypes: Array<{ value: AnnotationType; label: string }> = [
-  { value: "delete", label: "Delete" },
-  { value: "change-request", label: "Change request" },
-  { value: "question", label: "Question" },
-  { value: "note", label: "Note" },
-  { value: "approve", label: "Approve" },
-];
 
 const promptGoals: Array<{ value: AgentPromptGoal; label: string; description: string }> = [
   {
@@ -108,50 +97,6 @@ const promptGoals: Array<{ value: AgentPromptGoal; label: string; description: s
     description: "아래 사용자 지침을 우선 따릅니다.",
   },
 ];
-
-function annotationCommentLabel(type: AnnotationType) {
-  if (type === "change-request") {
-    return "Replace with";
-  }
-
-  if (type === "note") {
-    return "Reference note";
-  }
-
-  if (type === "question") {
-    return "Question";
-  }
-
-  if (type === "delete") {
-    return "Delete reason";
-  }
-
-  return "Comment";
-}
-
-function annotationCommentPlaceholder(type: AnnotationType) {
-  if (type === "change-request") {
-    return "선택 영역을 어떻게 바꿔야 하는지 적어주세요. 예: 시장에서 구입";
-  }
-
-  if (type === "note") {
-    return "수정 지시가 아닌 참고 메모를 적어주세요.";
-  }
-
-  if (type === "question") {
-    return "Agent가 확인해야 할 질문을 적어주세요.";
-  }
-
-  if (type === "delete") {
-    return "삭제 이유가 있으면 적어주세요. 비워두면 삭제 지시만 출력합니다.";
-  }
-
-  return "Agent가 참고해야 할 내용을 적어주세요.";
-}
-
-function requiresComment(type: AnnotationType) {
-  return type !== "delete";
-}
 
 type SelectionToolbarPosition = {
   left: number;
@@ -1008,7 +953,7 @@ export function AnnotatorPage() {
         </aside>
       </section>
 
-      <Dialog
+      <AnnotationInputDialog
         open={noteDialogOpen}
         onOpenChange={(open) => {
           if (open) {
@@ -1018,69 +963,15 @@ export function AnnotatorPage() {
 
           closeNoteDialog();
         }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{editingAnnotationId ? "Edit annotation" : "Add annotation"}</DialogTitle>
-            <DialogDescription>선택한 문서 영역에 남길 annotation type과 내용을 입력합니다.</DialogDescription>
-          </DialogHeader>
-          <FieldGroup>
-            <Field>
-              <FieldLabel>Selected text</FieldLabel>
-              <div className="max-h-24 overflow-auto rounded-lg border bg-muted/50 p-3 text-sm text-muted-foreground">
-                {selection}
-              </div>
-            </Field>
-            <Field>
-              <FieldLabel>Type</FieldLabel>
-              <Select
-                value={annotationType}
-                onValueChange={(value) => {
-                  if (value) {
-                    setAnnotationType(value as AnnotationType);
-                  }
-                }}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectGroup>
-                    <SelectLabel>Annotation type</SelectLabel>
-                    {annotationTypes.map((type) => (
-                      <SelectItem key={type.value} value={type.value}>
-                        {type.label}
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="annotation-dialog-comment">{annotationCommentLabel(annotationType)}</FieldLabel>
-              <Input
-                autoFocus
-                id="annotation-dialog-comment"
-                value={comment}
-                onChange={(event) => setComment(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") {
-                    event.preventDefault();
-                    saveDialogAnnotation();
-                  }
-                }}
-                placeholder={annotationCommentPlaceholder(annotationType)}
-              />
-            </Field>
-          </FieldGroup>
-          <DialogFooter>
-            <DialogClose render={<Button type="button" variant="outline" />}>Cancel</DialogClose>
-            <Button type="button" onClick={saveDialogAnnotation}>
-              {editingAnnotationId ? "Save" : "Add annotation"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        isEditing={editingAnnotationId !== null}
+        selectedText={selection}
+        type={annotationType}
+        onTypeChange={setAnnotationType}
+        comment={comment}
+        onCommentChange={setComment}
+        onSubmit={saveDialogAnnotation}
+        components={annotationDialogComponents}
+      />
 
       <footer className="border-t bg-card px-4 py-2 text-xs text-muted-foreground">{status}</footer>
     </main>
