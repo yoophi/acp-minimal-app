@@ -6,7 +6,6 @@ export {
 export {
   getSelectionAnchors,
   getSelectionRects,
-  useSelectionAnchors,
   type SelectionRect,
 } from "./use-selection-anchors";
 export { segmentTextByAnnotations, type TextSegment } from "./segment-text";

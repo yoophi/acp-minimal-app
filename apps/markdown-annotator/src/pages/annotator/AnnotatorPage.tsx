@@ -73,7 +73,9 @@ import {
   getAnnotationCommentLabel as annotationCommentLabel,
   getAnnotationCommentPlaceholder as annotationCommentPlaceholder,
   getSelectionAnchors,
+  getSelectionRects,
   requiresComment,
+  type SelectionRect,
 } from "@yoophi/markdown-annotation-react";
 import { annotationDialogComponents } from "@/shared/ui/annotation-dialog-components";
 import { markdownViewerComponents } from "@/shared/ui/markdown-viewer-components";
@@ -102,17 +104,6 @@ type SelectionToolbarPosition = {
   left: number;
   top: number;
 };
-
-type SelectionHighlightRect = {
-  height: number;
-  left: number;
-  top: number;
-  width: number;
-};
-
-function isUsefulSelectionRect(rect: DOMRect) {
-  return rect.width > 0 && rect.height > 0;
-}
 
 function isTauriRuntime() {
   return "__TAURI_INTERNALS__" in window;
@@ -145,7 +136,7 @@ export function AnnotatorPage() {
   const [noteDialogOpen, setNoteDialogOpen] = useState(false);
   const [isCliInstalled, setCliInstalled] = useState(false);
   const [isCliInstalling, setCliInstalling] = useState(false);
-  const [selectionHighlightRects, setSelectionHighlightRects] = useState<SelectionHighlightRect[]>([]);
+  const [selectionHighlightRects, setSelectionHighlightRects] = useState<SelectionRect[]>([]);
   const [selectionToolbarPosition, setSelectionToolbarPosition] = useState<SelectionToolbarPosition | null>(null);
   const [status, setStatus] = useState("예제 문서를 선택하거나 로컬 Markdown 파일을 열 수 있습니다.");
 
@@ -328,34 +319,17 @@ export function AnnotatorPage() {
   function captureSelection() {
     const anchors = getSelectionAnchors(documentPaneRef.current);
     if (anchors.length > 0) {
-      const selectionRange = window.getSelection()?.rangeCount ? window.getSelection()?.getRangeAt(0) : null;
-      const rangeRect = selectionRange?.getBoundingClientRect();
-      const rangeRects = selectionRange ? Array.from(selectionRange.getClientRects()).filter(isUsefulSelectionRect) : [];
-      const toolbarRect = rangeRects[rangeRects.length - 1] ?? rangeRect;
-      const paneRect = documentPaneRef.current?.getBoundingClientRect();
+      const highlightRects = getSelectionRects(documentPaneRef.current);
+      const lastRect = highlightRects[highlightRects.length - 1];
       const selectedText =
         window.getSelection()?.toString().trim() ?? anchors.map((anchor) => anchor.selectedText).join("\n");
 
       setSelection(selectedText);
       setSelectionAnchor(anchors[0] ?? null);
       setSelectionAnchors(anchors);
-      setSelectionHighlightRects(
-        paneRect
-          ? rangeRects.map((rect) => ({
-              height: rect.height,
-              left: rect.left - paneRect.left,
-              top: rect.top - paneRect.top,
-              width: rect.width,
-            }))
-          : [],
-      );
+      setSelectionHighlightRects(highlightRects);
       setSelectionToolbarPosition(
-        toolbarRect && paneRect
-          ? {
-              left: toolbarRect.right - paneRect.left + 8,
-              top: toolbarRect.top - paneRect.top,
-            }
-          : null,
+        lastRect ? { left: lastRect.left + lastRect.width + 8, top: lastRect.top } : null,
       );
       setStatus("선택 anchor를 저장했습니다.");
       return;

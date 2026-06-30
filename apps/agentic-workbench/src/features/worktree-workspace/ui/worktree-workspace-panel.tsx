@@ -897,7 +897,6 @@ function MarkdownWorkspaceTab({
   const [draftTarget, setDraftTarget] = useState<AnnotationDraftTarget | null>(null);
   const [draftType, setDraftType] = useState<AnnotationType>("note");
   const [draftComment, setDraftComment] = useState("");
-  const [selectionText, setSelectionText] = useState("");
   const [selectionAnchors, setSelectionAnchors] = useState<AnnotationAnchor[]>([]);
   const [selectionHighlightRects, setSelectionHighlightRects] = useState<SelectionRect[]>([]);
   const [selectionToolbarPosition, setSelectionToolbarPosition] = useState<{
@@ -929,9 +928,11 @@ function MarkdownWorkspaceTab({
     [previewQuery.data?.content],
   );
   const annotations = selectedFilePath ? (annotationsByFile[selectedFilePath] ?? []) : [];
-  const annotationPrompt = selectedFilePath
-    ? formatAnnotationsForAgent(selectedFilePath, annotations, blocks)
-    : "";
+  const annotationPrompt = useMemo(
+    () =>
+      selectedFilePath ? formatAnnotationsForAgent(selectedFilePath, annotations, blocks) : "",
+    [selectedFilePath, annotations, blocks],
+  );
   const viewerMaps = useMemo(
     () => buildViewerAnnotationMaps(annotations, blocks),
     [annotations, blocks],
@@ -1099,7 +1100,6 @@ function MarkdownWorkspaceTab({
   }
 
   function resetSelectionState() {
-    setSelectionText("");
     setSelectionAnchors([]);
     setSelectionHighlightRects([]);
     setSelectionToolbarPosition(null);
@@ -1109,7 +1109,6 @@ function MarkdownWorkspaceTab({
   function captureSelection() {
     const anchors = getSelectionAnchors(previewPaneRef.current);
     if (anchors.length === 0) {
-      setSelectionText("");
       setSelectionAnchors([]);
       setSelectionHighlightRects([]);
       setSelectionToolbarPosition(null);
@@ -1117,7 +1116,6 @@ function MarkdownWorkspaceTab({
     }
 
     setSelectionAnchors(anchors);
-    setSelectionText(anchors.map((anchor) => anchor.selectedText).filter(Boolean).join("\n"));
 
     // 선택 영역을 markdown 컬럼 기준 상대좌표로 캡처한다. mouseup 후 브라우저
     // 선택이 풀려도 이 좌표로 오버레이를 그려 선택 영역을 시각적으로 유지한다(MA와 동일).
@@ -1138,8 +1136,9 @@ function MarkdownWorkspaceTab({
     if (selectionAnchors.length === 0) {
       return;
     }
+    const text = selectionAnchors.map((anchor) => anchor.selectedText).filter(Boolean).join("\n");
     setEditingAnnotationId(null);
-    setDraftTarget({ kind: "selection", anchors: selectionAnchors, text: selectionText });
+    setDraftTarget({ kind: "selection", anchors: selectionAnchors, text });
     setDraftType("note");
     setDraftComment("");
     setSelectionToolbarPosition(null);

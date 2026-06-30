@@ -18,28 +18,3 @@ export function isFullBlockAnnotation(
     annotation.anchor.endOffset === block.content.length
   );
 }
-
-export function buildInlineAnnotationsByBlock(
-  annotations: AnnotationDraft[],
-  blocks: MarkdownBlock[],
-) {
-  const inlineAnnotations = new Map<string, AnnotationDraft[]>();
-
-  for (const annotation of annotations) {
-    const block = annotationBlock(annotation, blocks);
-    if (
-      !block ||
-      annotation.anchor.startOffset === undefined ||
-      annotation.anchor.endOffset === undefined ||
-      isFullBlockAnnotation(annotation, block)
-    ) {
-      continue;
-    }
-
-    const blockAnnotations = inlineAnnotations.get(annotation.anchor.blockId) ?? [];
-    blockAnnotations.push(annotation);
-    inlineAnnotations.set(annotation.anchor.blockId, blockAnnotations);
-  }
-
-  return inlineAnnotations;
-}

@@ -1,4 +1,3 @@
-import { useCallback, type RefObject } from "react";
 import type { AnnotationAnchor } from "@yoophi/markdown-annotation-core/types";
 
 function containsNode(parent: HTMLElement, node: Node) {
@@ -62,15 +61,6 @@ export function getSelectionAnchors(root: HTMLElement | null): AnnotationAnchor[
       },
     ];
   });
-}
-
-/**
- * getSelectionAnchors를 root ref에 묶은 헬퍼 훅. capture()는 호출 시점의
- * 선택 영역을 anchor 배열로 반환한다(없으면 빈 배열).
- */
-export function useSelectionAnchors(rootRef: RefObject<HTMLElement | null>) {
-  const capture = useCallback(() => getSelectionAnchors(rootRef.current), [rootRef]);
-  return { capture };
 }
 
 export type SelectionRect = { top: number; left: number; width: number; height: number };

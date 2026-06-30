@@ -1,6 +1,5 @@
 export {
   annotationBlock,
-  buildInlineAnnotationsByBlock,
   isFullBlockAnnotation,
 } from "./annotate/annotation-helpers";
 export {
