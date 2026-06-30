@@ -28,15 +28,6 @@ import {
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Textarea } from "@/components/ui/textarea";
 import { projectQueryKeys } from "@/entities/project/api/query-keys";
 import { getWorktreeChanges } from "@/entities/project/api/git-worktree-repository";
 import type { GitWorktree } from "@/entities/project/model/git-worktree";
@@ -78,12 +69,14 @@ import type {
   MarkdownBlock,
 } from "@yoophi/markdown-annotation-core/types";
 import {
+  AnnotationInputDialog,
   MarkdownViewer,
   buildViewerAnnotationMaps,
   getSelectionAnchors,
   getSelectionRects,
   type SelectionRect,
 } from "@yoophi/markdown-annotation-react";
+import { annotationDialogComponents } from "@/features/worktree-workspace/ui/annotation-dialog-components";
 import { cn } from "@/lib/utils";
 import { markdownViewerComponents } from "@/features/worktree-workspace/ui/markdown-viewer-components";
 import { EllipsisPopoverText } from "@/shared/ui/ellipsis-popover-text";
@@ -160,20 +153,6 @@ function createAnnotationFromAnchor({
     type,
     createdAt,
   };
-}
-
-function formatDraftTargetRange(target: AnnotationDraftTarget) {
-  if (target.kind === "block") {
-    return `Block lines ${target.block.startLine}-${target.block.endLine}`;
-  }
-
-  const first = target.anchors[0];
-  const last = target.anchors[target.anchors.length - 1];
-  if (!first || !last) {
-    return "Selection";
-  }
-
-  return `Selection lines ${first.startLine}-${last.endLine}`;
 }
 
 export function WorktreeWorkspacePanel({
@@ -1422,7 +1401,7 @@ function MarkdownWorkspaceTab({
         </div>
       </ResizablePanel>
     </ResizablePanelGroup>
-      <Dialog
+      <AnnotationInputDialog
         open={draftTarget !== null}
         onOpenChange={(open) => {
           if (!open) {
@@ -1430,77 +1409,21 @@ function MarkdownWorkspaceTab({
             resetSelectionState();
           }
         }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{editingAnnotationId ? "Annotation 수정" : "Annotation 추가"}</DialogTitle>
-            <DialogDescription>
-              {draftTarget ? formatDraftTargetRange(draftTarget) : ""}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-3">
-            <div className="flex rounded-md border p-0.5">
-              <Button
-                type="button"
-                size="sm"
-                variant={draftType === "note" ? "secondary" : "ghost"}
-                onClick={() => setDraftType("note")}
-              >
-                Note
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant={draftType === "change-request" ? "secondary" : "ghost"}
-                onClick={() => setDraftType("change-request")}
-              >
-                Change
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant={draftType === "delete" ? "destructive" : "ghost"}
-                onClick={() => setDraftType("delete")}
-              >
-                Delete
-              </Button>
-            </div>
-            <Textarea
-              value={draftComment}
-              onChange={(event) => setDraftComment(event.target.value)}
-              placeholder={
-                draftType === "delete"
-                  ? "삭제 이유를 입력하세요. 선택 사항입니다."
-                  : draftType === "change-request"
-                    ? "변경 요청 내용을 입력하세요."
-                    : "참고 메모를 입력하세요."
-              }
-              className="min-h-24 text-sm"
-            />
-          </div>
-          <DialogFooter>
-            <Button
-              type="button"
-              size="sm"
-              variant="ghost"
-              onClick={() => {
-                resetDraftState();
-                resetSelectionState();
-              }}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              disabled={draftType !== "delete" && !draftComment.trim()}
-              onClick={saveAnnotation}
-            >
-              {editingAnnotationId ? "Save" : "Add"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        isEditing={editingAnnotationId !== null}
+        selectedText={
+          draftTarget
+            ? draftTarget.kind === "selection"
+              ? draftTarget.text
+              : draftTarget.block.rawContent
+            : ""
+        }
+        type={draftType}
+        onTypeChange={setDraftType}
+        comment={draftComment}
+        onCommentChange={setDraftComment}
+        onSubmit={saveAnnotation}
+        components={annotationDialogComponents}
+      />
     </>
   );
 }
