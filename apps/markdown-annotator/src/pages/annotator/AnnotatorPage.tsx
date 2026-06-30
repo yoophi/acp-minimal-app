@@ -58,6 +58,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import type { AnnotationAnchor, AnnotationDraft, AnnotationType } from "@/entities/annotation";
 import {
+  formatAnnotationsForAgent,
+  parseMarkdownToBlocks,
+  type AgentPromptGoal,
+} from "@yoophi/markdown-annotation-core";
+import {
   checkCliInstalled,
   installCli,
   readMarkdownDocument,
@@ -65,11 +70,6 @@ import {
 import { exampleMarkdownDocuments } from "@/entities/document/model/examples";
 import type { MarkdownDocument } from "@/entities/document";
 import type { MarkdownBlock } from "@/entities/markdown-block";
-import {
-  formatAnnotationsForAgent,
-  type AgentPromptGoal,
-} from "@/features/export-annotations/formatAnnotationsForAgent";
-import { parseMarkdownToBlocks } from "@/features/markdown-renderer/parseMarkdownToBlocks";
 import {
   getDocumentPathFromWindowQuery,
   openMarkdownDocumentTab,

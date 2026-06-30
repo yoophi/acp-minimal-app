@@ -1,5 +1,5 @@
-import type { AnnotationDraft } from "@/entities/annotation";
-import type { MarkdownBlock } from "@/entities/markdown-block";
+import { annotationBlock, isFullBlockAnnotation } from "../annotate/annotation-helpers";
+import type { AnnotationDraft, MarkdownBlock } from "../types";
 
 export type AgentPromptGoal = "edit-document" | "review-reference" | "custom";
 
@@ -58,15 +58,6 @@ function groupAnnotations(annotations: AnnotationDraft[]) {
   });
 
   return Array.from(groups.values());
-}
-
-function annotationBlock(annotation: AnnotationDraft, blocks: MarkdownBlock[]) {
-  return blocks.find((block) => block.id === annotation.anchor.blockId);
-}
-
-function isFullBlockAnnotation(annotation: AnnotationDraft, blocks: MarkdownBlock[]) {
-  const block = annotationBlock(annotation, blocks);
-  return block !== undefined && annotation.anchor.startOffset === 0 && annotation.anchor.endOffset === block.content.length;
 }
 
 function formatContext(annotation: AnnotationDraft, blocks: MarkdownBlock[], selectedText: string) {

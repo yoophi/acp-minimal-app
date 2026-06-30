@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { parseMarkdownToBlocks } from "./parseMarkdownToBlocks";
+import { parseMarkdownToBlocks } from "./parse-markdown-to-blocks";
 
 describe("parseMarkdownToBlocks", () => {
   it("skips frontmatter and preserves source line numbers", () => {

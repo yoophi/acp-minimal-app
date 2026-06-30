@@ -62,14 +62,18 @@ import {
   type GitGraphRow,
   type GitGraphSegment,
 } from "@/features/worktree-workspace/model/git-graph-layout";
-import { formatAnnotationsForAgent } from "@/features/markdown-annotation/model/format-annotations-for-agent";
-import { parseMarkdownToBlocks } from "@/features/markdown-annotation/model/parse-markdown-to-blocks";
+import {
+  buildInlineAnnotationsByBlock,
+  formatAnnotationsForAgent,
+  isFullBlockAnnotation,
+  parseMarkdownToBlocks,
+} from "@yoophi/markdown-annotation-core";
 import type {
   AnnotationDraft,
   AnnotationAnchor,
   AnnotationType,
   MarkdownBlock,
-} from "@/features/markdown-annotation/model/types";
+} from "@yoophi/markdown-annotation-core/types";
 import { cn } from "@/lib/utils";
 import { EllipsisPopoverText } from "@/shared/ui/ellipsis-popover-text";
 
@@ -145,35 +149,6 @@ function createAnnotationFromAnchor({
     type,
     createdAt,
   };
-}
-
-function isFullBlockAnnotation(annotation: AnnotationDraft, block: MarkdownBlock) {
-  return (
-    annotation.anchor.startOffset === 0 &&
-    annotation.anchor.endOffset === block.content.length
-  );
-}
-
-function buildInlineAnnotationsByBlock(annotations: AnnotationDraft[], blocks: MarkdownBlock[]) {
-  const inlineAnnotations = new Map<string, AnnotationDraft[]>();
-
-  for (const annotation of annotations) {
-    const block = blocks.find((candidate) => candidate.id === annotation.anchor.blockId);
-    if (
-      !block ||
-      annotation.anchor.startOffset === undefined ||
-      annotation.anchor.endOffset === undefined ||
-      isFullBlockAnnotation(annotation, block)
-    ) {
-      continue;
-    }
-
-    const blockAnnotations = inlineAnnotations.get(annotation.anchor.blockId) ?? [];
-    blockAnnotations.push(annotation);
-    inlineAnnotations.set(annotation.anchor.blockId, blockAnnotations);
-  }
-
-  return inlineAnnotations;
 }
 
 function formatDraftTargetRange(target: AnnotationDraftTarget) {
@@ -1713,6 +1688,8 @@ function AnnotatedInlineText({
             "bg-transparent text-destructive line-through decoration-destructive decoration-2",
           annotation.type === "change-request" && "bg-sky-100 text-foreground",
           annotation.type === "note" && "bg-yellow-200 text-foreground",
+          annotation.type === "question" && "bg-violet-100 text-foreground",
+          annotation.type === "approve" && "bg-emerald-100 text-foreground",
         )}
         title={annotation.comment || annotation.type}
       >

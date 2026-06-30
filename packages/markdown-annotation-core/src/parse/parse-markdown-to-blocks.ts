@@ -1,4 +1,4 @@
-import type { MarkdownBlock } from "@/entities/markdown-block";
+import type { MarkdownBlock } from "../types";
 
 type FrontmatterResult = {
   content: string;

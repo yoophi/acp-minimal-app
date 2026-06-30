@@ -1,1 +1,1 @@
-export type { MarkdownBlock, MarkdownBlockType } from "./model/types";
+export type { MarkdownBlock, MarkdownBlockType } from "@yoophi/markdown-annotation-core/types";

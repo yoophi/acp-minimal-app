@@ -1,8 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import type { AnnotationDraft } from "@/entities/annotation";
-import type { MarkdownBlock } from "@/entities/markdown-block";
-import { formatAnnotationsForAgent } from "./formatAnnotationsForAgent";
+import type { AnnotationDraft, MarkdownBlock } from "../types";
+import { formatAnnotationsForAgent } from "./format-annotations-for-agent";
 
 const blocks: MarkdownBlock[] = [
   {

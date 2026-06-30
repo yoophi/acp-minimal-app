@@ -2,4 +2,4 @@ export type {
   AnnotationAnchor,
   AnnotationDraft,
   AnnotationType,
-} from "./model/types";
+} from "@yoophi/markdown-annotation-core/types";

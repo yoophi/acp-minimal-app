@@ -1,0 +1,11 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@yoophi/markdown-annotation-core": ["./src/index.ts"],
+      "@yoophi/markdown-annotation-core/types": ["./src/types/index.ts"]
+    }
+  },
+  "include": ["src"]
+}

@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { parseMarkdownToBlocks } from "@/features/markdown-renderer/parseMarkdownToBlocks";
+import { parseMarkdownToBlocks } from "@yoophi/markdown-annotation-core";
 import { MarkdownViewer } from "@/shared/ui/MarkdownViewer";
 
 const meta = {

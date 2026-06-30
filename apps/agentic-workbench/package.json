@@ -20,6 +20,7 @@
     "@tanstack/react-query": "^5.101.0",
     "@tauri-apps/api": "^2.0.0",
     "@tauri-apps/plugin-dialog": "^2.7.1",
+    "@yoophi/markdown-annotation-core": "workspace:*",
     "@vitejs/plugin-react": "^5.0.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
