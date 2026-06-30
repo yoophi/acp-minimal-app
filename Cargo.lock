@@ -63,6 +63,7 @@ dependencies = [
  "agent-client-protocol",
  "anyhow",
  "chrono",
+ "git-core",
  "libc",
  "objc2",
  "objc2-app-kit",
