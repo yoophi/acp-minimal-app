@@ -1,24 +1,23 @@
-use crate::domain::{
-    git_worktree_changes::{GitFileDiff, GitWorktreeChanges},
-    git_worktree_changes_provider::GitWorktreeChangesProvider,
-};
+use git_core::GitWorktreeStatusReader;
+
+use crate::domain::git_worktree_changes::{GitWorktreeChanges, GitWorktreeFileDiff};
 
 pub fn get_worktree_changes(
-    provider: &impl GitWorktreeChangesProvider,
+    reader: &impl GitWorktreeStatusReader,
     working_directory: String,
 ) -> Result<GitWorktreeChanges, String> {
     let working_directory = normalize_required(working_directory, "Working directory")?;
-    provider.status(&working_directory)
+    reader.status(&working_directory)
 }
 
 pub fn get_worktree_file_diff(
-    provider: &impl GitWorktreeChangesProvider,
+    reader: &impl GitWorktreeStatusReader,
     working_directory: String,
     path: String,
-) -> Result<GitFileDiff, String> {
+) -> Result<GitWorktreeFileDiff, String> {
     let working_directory = normalize_required(working_directory, "Working directory")?;
     let path = normalize_required(path, "File path")?;
-    provider.diff(&working_directory, &path)
+    reader.diff(&working_directory, &path)
 }
 
 fn normalize_required(value: String, field_name: &str) -> Result<String, String> {
@@ -33,14 +32,15 @@ fn normalize_required(value: String, field_name: &str) -> Result<String, String>
 
 #[cfg(test)]
 mod tests {
+    use git_core::{GitChangedFile, GitChangedFileGroup, GitWorktreeStatusReader};
+
+    use crate::domain::git_worktree_changes::{GitWorktreeChanges, GitWorktreeFileDiff};
+
     use super::*;
-    use crate::domain::git_worktree_changes::{
-        GitChangedFile, GitChangedFileGroup, GitFileDiff, GitWorktreeChanges,
-    };
 
-    struct FakeChangesProvider;
+    struct FakeReader;
 
-    impl GitWorktreeChangesProvider for FakeChangesProvider {
+    impl GitWorktreeStatusReader for FakeReader {
         fn status(&self, working_directory: &str) -> Result<GitWorktreeChanges, String> {
             Ok(GitWorktreeChanges {
                 working_directory: working_directory.to_string(),
@@ -58,20 +58,24 @@ mod tests {
             })
         }
 
-        fn diff(&self, _working_directory: &str, path: &str) -> Result<GitFileDiff, String> {
-            Ok(GitFileDiff {
+        fn diff(
+            &self,
+            _working_directory: &str,
+            path: &str,
+        ) -> Result<GitWorktreeFileDiff, String> {
+            Ok(GitWorktreeFileDiff {
                 path: path.to_string(),
-                diff: "diff --git".into(),
-                truncated: false,
-                binary: false,
+                content: "diff --git".into(),
+                is_binary: false,
+                is_truncated: false,
             })
         }
     }
 
     #[test]
     fn trims_working_directory_for_status_lookup() {
-        let changes = get_worktree_changes(&FakeChangesProvider, " /repo ".into())
-            .expect("changes should load");
+        let changes =
+            get_worktree_changes(&FakeReader, " /repo ".into()).expect("changes should load");
 
         assert_eq!(changes.working_directory, "/repo");
         assert_eq!(changes.staged_count, 1);
@@ -79,7 +83,7 @@ mod tests {
 
     #[test]
     fn rejects_blank_file_diff_path_before_provider_call() {
-        let error = get_worktree_file_diff(&FakeChangesProvider, "/repo".into(), " ".into())
+        let error = get_worktree_file_diff(&FakeReader, "/repo".into(), " ".into())
             .expect_err("blank path should fail");
 
         assert_eq!(error, "File path is required.");

@@ -23,7 +23,7 @@ use crate::{
         git_branch::GitBranch,
         git_remote::GitRemote,
         git_worktree::{GitWorktree, GitWorktreeCreateDraft},
-        git_worktree_changes::{GitFileDiff, GitWorktreeChanges},
+        git_worktree_changes::{GitWorktreeChanges, GitWorktreeFileDiff},
         goal::{GoalDraft, GoalProgressUpdate, GoalStatus, GoalUpdate, ThreadGoal},
         project::{Project, ProjectDraft},
         provider_session::{ProviderSession, SessionScope},
@@ -45,7 +45,6 @@ use crate::{
         git_cli_branch_provider::GitCliBranchProvider,
         git_cli_remote_provider::GitCliRemoteProvider,
         git_cli_worktree_change_provider::GitCliWorktreeChangeProvider,
-        git_cli_worktree_changes_provider::GitCliWorktreeChangesProvider,
         git_cli_worktree_git_provider::GitCliWorktreeGitProvider,
         git_cli_worktree_provider::GitCliWorktreeProvider,
         json_acp_session_store::JsonAcpSessionStore,
@@ -315,7 +314,7 @@ pub fn delete_git_worktree(working_directory: String, path: String) -> Result<()
 #[tauri::command]
 pub fn get_worktree_changes(working_directory: String) -> Result<GitWorktreeChanges, String> {
     git_worktree_changes_service::get_worktree_changes(
-        &GitCliWorktreeChangesProvider,
+        &git_core::GitCliWorktreeStatusReader,
         working_directory,
     )
 }
@@ -324,9 +323,9 @@ pub fn get_worktree_changes(working_directory: String) -> Result<GitWorktreeChan
 pub fn get_worktree_file_diff(
     working_directory: String,
     path: String,
-) -> Result<GitFileDiff, String> {
+) -> Result<GitWorktreeFileDiff, String> {
     git_worktree_changes_service::get_worktree_file_diff(
-        &GitCliWorktreeChangesProvider,
+        &git_core::GitCliWorktreeStatusReader,
         working_directory,
         path,
     )

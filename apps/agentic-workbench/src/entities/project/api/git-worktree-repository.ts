@@ -5,8 +5,8 @@ import type {
   GitWorktreeCreateInput,
 } from "@/entities/project/model/git-worktree";
 import type {
-  GitFileDiff,
   GitWorktreeChanges,
+  GitWorktreeFileDiff,
 } from "@/entities/project/model/git-worktree-changes";
 
 export async function listGitWorktrees(workingDirectory: string) {
@@ -32,7 +32,7 @@ export async function getWorktreeChanges(workingDirectory: string) {
 }
 
 export async function getWorktreeFileDiff(workingDirectory: string, path: string) {
-  return invoke<GitFileDiff>("get_worktree_file_diff", { workingDirectory, path });
+  return invoke<GitWorktreeFileDiff>("get_worktree_file_diff", { workingDirectory, path });
 }
 
 export type OpenWorktreeWindowMode = "window" | "tab";
