@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { listen } from "@tauri-apps/api/event";
+import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertCircleIcon,
   ChevronDownIcon,
@@ -35,6 +36,8 @@ import { worktreeFileQueryKeys } from "@/entities/worktree-file/api/query-keys";
 import {
   listWorktreeFiles,
   readWorktreeTextFile,
+  startWorktreeWatcher,
+  stopWorktreeWatcher,
 } from "@/entities/worktree-file/api/worktree-file-repository";
 import type { WorktreeFileEntry } from "@/entities/worktree-file/model/types";
 import { worktreeGitQueryKeys } from "@/entities/worktree-git/api/query-keys";
@@ -78,6 +81,14 @@ import {
   getSelectionRects,
   type SelectionRect,
 } from "@yoophi/markdown-annotation-react";
+import {
+  autoRefreshQueryOptions,
+  findStaleCommitSelection,
+  findStaleFileSelection,
+  WORKTREE_CHANGED_EVENT,
+  type WorktreeChangedEvent,
+  type StaleSelection,
+} from "@yoophi/workspace-auto-refresh";
 import { annotationDialogComponents } from "@/features/worktree-workspace/ui/annotation-dialog-components";
 import { cn } from "@/lib/utils";
 import { markdownViewerComponents } from "@/features/worktree-workspace/ui/markdown-viewer-components";
@@ -163,6 +174,55 @@ export function WorktreeWorkspacePanel({
 }: WorktreeWorkspacePanelProps) {
   const [selectedTab, setSelectedTab] = useState<WorkspaceTabId>("git");
   const [gitHistoryView, setGitHistoryView] = useState<GitHistoryView>("graph");
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    let disposed = false;
+    let unlisten: (() => void) | undefined;
+
+    startWorktreeWatcher(worktree.path).catch((error) => {
+      console.error("Failed to start worktree watcher", error);
+    });
+
+    listen<WorktreeChangedEvent>(WORKTREE_CHANGED_EVENT, (event) => {
+      if (disposed || event.payload.workingDirectory !== worktree.path) {
+        return;
+      }
+
+      void queryClient.invalidateQueries({ queryKey: worktreeFileQueryKeys.list(worktree.path) });
+      void queryClient.invalidateQueries({
+        queryKey: ["worktree-files", "text-file", worktree.path],
+      });
+      void queryClient.invalidateQueries({ queryKey: projectQueryKeys.worktreeChanges(worktree.path) });
+
+      if (event.payload.kind === "file") {
+        return;
+      }
+
+      void queryClient.invalidateQueries({ queryKey: worktreeGitQueryKeys.history(worktree.path) });
+      void queryClient.invalidateQueries({ queryKey: worktreeGitQueryKeys.graph(worktree.path) });
+      void queryClient.invalidateQueries({
+        queryKey: ["worktree-git", "commit-detail", worktree.path],
+      });
+      void queryClient.invalidateQueries({
+        queryKey: ["worktree-git", "file-diff", worktree.path],
+      });
+    })
+      .then((dispose) => {
+        unlisten = dispose;
+      })
+      .catch((error) => {
+        console.error("Failed to listen for worktree changes", error);
+      });
+
+    return () => {
+      disposed = true;
+      unlisten?.();
+      stopWorktreeWatcher().catch((error) => {
+        console.error("Failed to stop worktree watcher", error);
+      });
+    };
+  }, [queryClient, worktree.path]);
 
   return (
     <section className="flex h-full min-h-0 flex-col overflow-hidden border-l bg-background">
@@ -237,6 +297,7 @@ function GitWorkspaceTab({
 }) {
   const [selectedCommitHash, setSelectedCommitHash] = useState<string | null>(null);
   const [selectedDiffPath, setSelectedDiffPath] = useState<string | null>(null);
+  const [staleCommitSelection, setStaleCommitSelection] = useState<StaleSelection | null>(null);
   const historyQuery = useInfiniteQuery({
     queryKey: worktreeGitQueryKeys.history(worktree.path),
     queryFn: ({ pageParam }) =>
@@ -247,6 +308,7 @@ function GitWorkspaceTab({
     initialPageParam: 0,
     getNextPageParam: (lastPage) =>
       lastPage.page.hasMore ? lastPage.page.offset + lastPage.commits.length : undefined,
+    ...autoRefreshQueryOptions,
   });
   const graphQuery = useInfiniteQuery({
     queryKey: worktreeGitQueryKeys.graph(worktree.path),
@@ -258,10 +320,12 @@ function GitWorkspaceTab({
     initialPageParam: 0,
     getNextPageParam: (lastPage) =>
       lastPage.page.hasMore ? lastPage.page.offset + lastPage.commits.length : undefined,
+    ...autoRefreshQueryOptions,
   });
   const statusQuery = useQuery({
     queryKey: projectQueryKeys.worktreeChanges(worktree.path),
     queryFn: () => getWorktreeChanges(worktree.path),
+    ...autoRefreshQueryOptions,
   });
   const commitDetailQuery = useQuery({
     enabled: selectedCommitHash !== null,
@@ -269,6 +333,7 @@ function GitWorkspaceTab({
       ? worktreeGitQueryKeys.commitDetail(worktree.path, selectedCommitHash)
       : worktreeGitQueryKeys.commitDetail(worktree.path, ""),
     queryFn: () => getWorktreeCommitDetail(worktree.path, selectedCommitHash ?? ""),
+    ...autoRefreshQueryOptions,
   });
   const fileDiffQuery = useQuery({
     enabled: selectedCommitHash !== null && selectedDiffPath !== null,
@@ -282,6 +347,7 @@ function GitWorkspaceTab({
         selectedCommitHash ?? "",
         selectedDiffPath ?? "",
       ),
+    ...autoRefreshQueryOptions,
   });
   const historyData = useMemo(
     () => combineGitHistoryPages(historyQuery.data?.pages ?? []),
@@ -298,7 +364,33 @@ function GitWorkspaceTab({
   function selectCommit(commitHash: string) {
     setSelectedCommitHash(commitHash);
     setSelectedDiffPath(null);
+    setStaleCommitSelection(null);
   }
+
+  useEffect(() => {
+    if (!selectedCommitHash || (!historyData && !graphData)) {
+      setStaleCommitSelection(null);
+      return;
+    }
+
+    const availableCommitHashes = new Set<string>();
+    for (const commit of historyData?.commits ?? []) {
+      availableCommitHashes.add(commit.hash);
+    }
+    for (const commit of graphData?.commits ?? []) {
+      availableCommitHashes.add(commit.hash);
+    }
+
+    const staleSelection = findStaleCommitSelection({
+      selectedCommitHash,
+      availableCommitHashes,
+      reason: "history-rewritten",
+    });
+    setStaleCommitSelection(staleSelection);
+    if (staleSelection) {
+      setSelectedDiffPath(null);
+    }
+  }, [graphData, historyData, selectedCommitHash]);
 
   return (
     <ResizablePanelGroup orientation="horizontal" className="h-full min-h-0">
@@ -312,9 +404,40 @@ function GitWorkspaceTab({
                   {worktree.branch || "detached"} · {worktree.status}
                 </p>
               </div>
-              <Badge variant="outline" className="shrink-0 font-mono">
-                {worktree.branch || "detached"}
-              </Badge>
+              <div className="flex shrink-0 items-center gap-1.5">
+                {statusQuery.isFetching && !statusQuery.isLoading ? (
+                  <Badge variant="secondary">Refreshing</Badge>
+                ) : null}
+                {statusQuery.isError ? <Badge variant="destructive">Error</Badge> : null}
+                <Badge variant="outline" className="font-mono">
+                  {worktree.branch || "detached"}
+                </Badge>
+                <Button
+                  type="button"
+                  size="icon-sm"
+                  variant="ghost"
+                  aria-label="Git workspace 새로고침"
+                  disabled={statusQuery.isFetching || historyQuery.isFetching || graphQuery.isFetching}
+                  onClick={() => {
+                    void statusQuery.refetch();
+                    void historyQuery.refetch();
+                    void graphQuery.refetch();
+                    if (selectedCommitHash) {
+                      void commitDetailQuery.refetch();
+                    }
+                    if (selectedCommitHash && selectedDiffPath) {
+                      void fileDiffQuery.refetch();
+                    }
+                  }}
+                >
+                  <RefreshCwIcon
+                    className={cn(
+                      (statusQuery.isFetching || historyQuery.isFetching || graphQuery.isFetching) &&
+                        "animate-spin",
+                    )}
+                  />
+                </Button>
+              </div>
             </div>
             <div className="mt-3 flex flex-wrap gap-1.5">
               {statusQuery.isLoading ? (
@@ -340,7 +463,14 @@ function GitWorkspaceTab({
                 <GitCommitIcon className="size-4 shrink-0 text-muted-foreground" />
                 <h2 className="truncate text-sm font-medium">Commit log</h2>
               </div>
-              <div className="flex shrink-0 rounded-md border p-0.5">
+              <div className="flex shrink-0 items-center gap-2">
+                {(historyQuery.isFetching || graphQuery.isFetching) &&
+                !historyQuery.isLoading &&
+                !graphQuery.isLoading ? (
+                  <Badge variant="secondary">Refreshing</Badge>
+                ) : null}
+                {staleCommitSelection ? <Badge variant="destructive">Stale commit</Badge> : null}
+                <div className="flex rounded-md border p-0.5">
                 <Button
                   type="button"
                   size="sm"
@@ -357,6 +487,7 @@ function GitWorkspaceTab({
                 >
                   List
                 </Button>
+                </div>
               </div>
             </header>
             <div className="min-h-0 flex-1 overflow-auto p-4">
@@ -437,6 +568,11 @@ function GitWorkspaceTab({
               <EmptyPanel
                 title="선택된 commit 없음"
                 description="왼쪽 graph 또는 commit list에서 commit을 선택하면 상세 정보를 표시합니다."
+              />
+            ) : staleCommitSelection ? (
+              <EmptyPanel
+                title="선택한 commit이 현재 history에 없습니다"
+                description={`${staleCommitSelection.id.slice(0, 8)} commit이 branch 변경, rebase, reset으로 사라졌을 수 있습니다.`}
               />
             ) : commitDetailQuery.isLoading ? (
               <InlineState icon={Loader2Icon} title="Commit detail을 불러오는 중입니다." spinning />
@@ -521,6 +657,7 @@ function FileWorkspaceTab({ worktree }: { worktree: GitWorktree }) {
   const filesQuery = useQuery({
     queryKey: worktreeFileQueryKeys.list(worktree.path),
     queryFn: () => listWorktreeFiles(worktree.path),
+    ...autoRefreshQueryOptions,
   });
   const previewQuery = useQuery({
     enabled: selectedFilePath !== null,
@@ -528,6 +665,7 @@ function FileWorkspaceTab({ worktree }: { worktree: GitWorktree }) {
       ? worktreeFileQueryKeys.textFile(worktree.path, selectedFilePath)
       : worktreeFileQueryKeys.textFile(worktree.path, ""),
     queryFn: () => readWorktreeTextFile(worktree.path, selectedFilePath ?? ""),
+    ...autoRefreshQueryOptions,
   });
   const rows = useMemo(
     () => buildFileTreeRows(filesQuery.data ?? [], expandedFolders),
@@ -536,6 +674,21 @@ function FileWorkspaceTab({ worktree }: { worktree: GitWorktree }) {
   const selectedFile = filesQuery.data?.find(
     (entry) => !entry.isDir && entry.relativePath === selectedFilePath,
   );
+  const staleFileSelection = useMemo(() => {
+    if (!filesQuery.data || selectedFilePath === null) {
+      return null;
+    }
+    return findStaleFileSelection({
+      selectedPath: selectedFilePath,
+      availablePaths: filesQuery.data
+        .filter((entry) => !entry.isDir)
+        .map((entry) => entry.relativePath),
+    });
+  }, [filesQuery.data, selectedFilePath]);
+
+  function selectFile(path: string) {
+    setSelectedFilePath(path);
+  }
 
   function toggleFolder(path: string) {
     setExpandedFolders((current) => {
@@ -561,6 +714,13 @@ function FileWorkspaceTab({ worktree }: { worktree: GitWorktree }) {
                 <p className="truncate text-xs text-muted-foreground">
                   {filesQuery.data?.length ?? 0} visible items
                 </p>
+                <div className="mt-1 flex items-center gap-1.5">
+                  {filesQuery.isFetching && !filesQuery.isLoading ? (
+                    <Badge variant="secondary">Refreshing</Badge>
+                  ) : null}
+                  {staleFileSelection ? <Badge variant="destructive">Stale file</Badge> : null}
+                  {filesQuery.isError ? <Badge variant="destructive">Error</Badge> : null}
+                </div>
               </div>
             </div>
             <Button
@@ -599,7 +759,7 @@ function FileWorkspaceTab({ worktree }: { worktree: GitWorktree }) {
                     row={row}
                     selected={row.relativePath === selectedFilePath}
                     onToggleFolder={toggleFolder}
-                    onSelectFile={setSelectedFilePath}
+                    onSelectFile={selectFile}
                   />
                 ))}
               </div>
@@ -633,6 +793,11 @@ function FileWorkspaceTab({ worktree }: { worktree: GitWorktree }) {
               <EmptyPanel
                 title="파일을 선택하세요"
                 description="왼쪽 file tree에서 텍스트 파일을 선택하면 내용을 미리보기합니다."
+              />
+            ) : staleFileSelection ? (
+              <EmptyPanel
+                title="선택한 파일이 현재 목록에 없습니다"
+                description={`${staleFileSelection.id} 파일이 삭제되었거나 이동되었을 수 있습니다.`}
               />
             ) : previewQuery.isLoading ? (
               <InlineState icon={Loader2Icon} title="파일을 읽는 중입니다." spinning />
@@ -689,6 +854,7 @@ function MarkdownWorkspaceTab({
   const filesQuery = useQuery({
     queryKey: worktreeFileQueryKeys.list(worktree.path),
     queryFn: () => listWorktreeFiles(worktree.path),
+    ...autoRefreshQueryOptions,
   });
   const markdownEntries = useMemo(
     () => filterMarkdownTreeEntries(filesQuery.data ?? []),
@@ -704,6 +870,7 @@ function MarkdownWorkspaceTab({
       ? worktreeFileQueryKeys.textFile(worktree.path, selectedFilePath)
       : worktreeFileQueryKeys.textFile(worktree.path, ""),
     queryFn: () => readWorktreeTextFile(worktree.path, selectedFilePath ?? ""),
+    ...autoRefreshQueryOptions,
   });
   const blocks = useMemo(
     () => parseMarkdownToBlocks(previewQuery.data?.content ?? ""),
@@ -732,6 +899,18 @@ function MarkdownWorkspaceTab({
     resetDraftState();
     resetSelectionState();
   }
+
+  const staleFileSelection = useMemo(() => {
+    if (!filesQuery.data || selectedFilePath === null) {
+      return null;
+    }
+    return findStaleFileSelection({
+      selectedPath: selectedFilePath,
+      availablePaths: markdownEntries
+        .filter((entry) => !entry.isDir)
+        .map((entry) => entry.relativePath),
+    });
+  }, [filesQuery.data, markdownEntries, selectedFilePath]);
 
   function toggleFolder(path: string) {
     setExpandedFolders((current) => {
@@ -963,6 +1142,13 @@ function MarkdownWorkspaceTab({
                 <p className="truncate text-xs text-muted-foreground">
                   {markdownEntries.filter((entry) => !entry.isDir).length} files
                 </p>
+                <div className="mt-1 flex items-center gap-1.5">
+                  {filesQuery.isFetching && !filesQuery.isLoading ? (
+                    <Badge variant="secondary">Refreshing</Badge>
+                  ) : null}
+                  {staleFileSelection ? <Badge variant="destructive">Stale file</Badge> : null}
+                  {filesQuery.isError ? <Badge variant="destructive">Error</Badge> : null}
+                </div>
               </div>
             </div>
             <Button
@@ -1038,6 +1224,11 @@ function MarkdownWorkspaceTab({
               <EmptyPanel
                 title="Markdown 파일을 선택하세요"
                 description="왼쪽 markdown tree에서 파일을 선택하면 preview를 표시합니다."
+              />
+            ) : staleFileSelection ? (
+              <EmptyPanel
+                title="선택한 Markdown 파일이 현재 목록에 없습니다"
+                description={`${staleFileSelection.id} 파일이 삭제되었거나 이동되었을 수 있습니다.`}
               />
             ) : previewQuery.isLoading ? (
               <InlineState icon={Loader2Icon} title="Markdown 파일을 읽는 중입니다." spinning />
