@@ -10,6 +10,10 @@ export type {
   GitCommitDetail,
   GitFileDiff,
   GitCommitQueryOptions,
+  GitChangedFileGroup,
+  GitChangedFile,
+  GitWorktreeChanges,
+  GitWorktreeFileDiff,
 } from "./types";
 export {
   computeGitGraphRows,

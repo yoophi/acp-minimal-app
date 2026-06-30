@@ -8,3 +8,4 @@ export { HistoryGraphView, type HistoryGraphViewProps } from "./ui/history-graph
 export { CommitDetailView, type CommitDetailViewProps } from "./ui/commit-detail-view";
 export { DiffViewer } from "./ui/diff-viewer";
 export { parseDiffLines, parseHunkHeader, type DiffLine } from "./model/diff";
+export { WorktreeChangesView, type WorktreeChangesViewProps } from "./ui/worktree-changes-view";
