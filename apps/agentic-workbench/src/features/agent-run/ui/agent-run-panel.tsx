@@ -2662,17 +2662,17 @@ function ToolFileChangeView({ change }: { change: ToolFileChange }) {
           </Badge>
         )}
       </summary>
-      <div className="border-t p-2">
+      <div className="border-t">
         {content ? (
           change.diff ? (
-            <DiffViewer content={content} className="max-h-72 text-[11px]" />
+            <DiffViewer content={content} className="max-h-72 w-full rounded-none border-0 text-[11px]" />
           ) : (
-            <pre className="max-h-72 overflow-auto rounded-md border bg-muted/40 p-3 whitespace-pre-wrap break-words font-mono text-xs">
+            <pre className="max-h-72 w-full overflow-auto bg-muted/40 p-3 whitespace-pre-wrap break-words font-mono text-xs">
               {content}
             </pre>
           )
         ) : (
-          <div className="rounded-md border border-dashed bg-muted/40 p-3 text-xs text-muted-foreground">
+          <div className="bg-muted/40 p-3 text-xs text-muted-foreground">
             {fallback}
           </div>
         )}
