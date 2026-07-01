@@ -128,6 +128,7 @@ File: /absolute/path/to/personal-notes-shopping-list.md
 테스트용 예제는 monorepo의 [examples/markdown-annotator](../../examples/markdown-annotator) 아래에 있습니다.
 
 - [agent-review-plan.md](../../examples/markdown-annotator/agent-review-plan.md)
+- [mermaid-chart-examples.md](../../examples/markdown-annotator/mermaid-chart-examples.md)
 - [product-requirements.md](../../examples/markdown-annotator/product-requirements.md)
 - [technical-design.md](../../examples/markdown-annotator/technical-design.md)
 - [personal-notes-shopping-list.md](../../examples/markdown-annotator/personal-notes-shopping-list.md)
