@@ -83,15 +83,15 @@
 
 ### Tests for User Story 2 (constitution-required) ⚠️
 
-- [ ] T017 [P] [US2] `apps/agentic-workbench/src-tauri/src/infrastructure/fs_worktree_watcher.rs` 테스트 모듈에 추가(구현 전 FAIL 확인): (a) `EXCLUDED_DIRS` 전체가 무시되는지, (b) `.git/index`·`*.lock`·`FETCH_HEAD` 단독 변화 미발행, `HEAD`/`refs/`/`packed-refs` 변화는 `kind=git` 발행, (c) trailing debounce가 창 내 마지막 이벤트를 발행하는지
+- [x] T017 [P] [US2] `apps/agentic-workbench/src-tauri/src/infrastructure/fs_worktree_watcher.rs` 테스트 모듈에 추가(구현 전 FAIL 확인): (a) `EXCLUDED_DIRS` 전체가 무시되는지, (b) `.git/index`·`*.lock`·`FETCH_HEAD` 단독 변화 미발행, `HEAD`/`refs/`/`packed-refs` 변화는 `kind=git` 발행, (c) trailing debounce가 창 내 마지막 이벤트를 발행하는지
 
 ### Implementation for User Story 2
 
-- [ ] T018 [US2] 제외 목록 단일화: `EXCLUDED_DIRS`를 `apps/agentic-workbench/src-tauri/src/infrastructure/fs_worktree_file_provider.rs`에서 `infrastructure/mod.rs`(또는 공용 모듈)로 옮겨 watcher와 공유
-- [ ] T019 [US2] watcher 이벤트 필터: `infrastructure/fs_worktree_watcher.rs`의 `should_ignore_event`가 공유 제외 목록을 사용하고, `.git` 내부 이벤트를 `HEAD`/`refs/`/`MERGE_HEAD`/`packed-refs`로 세분화(`index`/`*.lock`/`FETCH_HEAD` 단독 변화 미발행) — T017(a)(b) 통과
-- [ ] T020 [US2] trailing debounce: `infrastructure/fs_worktree_watcher.rs`의 leading-edge rate-limit을 마지막 원시 이벤트 후 500ms 발행 방식으로 교체(std thread + channel, 신규 의존성 없음), T001 perf 로그에 watcher 이벤트 카운트 연결 — T017(c) 통과
-- [ ] T021 [US2] frontend 선별 invalidation: `apps/agentic-workbench/src/features/worktree-workspace/ui/worktree-workspace-panel.tsx`의 watcher listener가 활성 탭 기준으로 invalidate 범위를 한정(비활성 query는 inactive invalidation으로 즉시 refetch하지 않음, contracts §5 규칙)
-- [ ] T022 [US2] US2 검증: quickstart S2(idle 10분 git 이벤트 0회)·S3(agent 실행 반응성, dist 변경 무시, 마지막 변경 반영, 외부 commit 정상 감지) 수행 + `cargo test`(src-tauri) + `pnpm --filter agentic-workbench test`
+- [x] T018 [US2] 제외 목록 단일화: `EXCLUDED_DIRS`를 `apps/agentic-workbench/src-tauri/src/infrastructure/fs_worktree_file_provider.rs`에서 `infrastructure/mod.rs`(또는 공용 모듈)로 옮겨 watcher와 공유
+- [x] T019 [US2] watcher 이벤트 필터: `infrastructure/fs_worktree_watcher.rs`의 `should_ignore_event`가 공유 제외 목록을 사용하고, `.git` 내부 이벤트를 `HEAD`/`refs/`/`MERGE_HEAD`/`packed-refs`로 세분화(`index`/`*.lock`/`FETCH_HEAD` 단독 변화 미발행) — T017(a)(b) 통과
+- [x] T020 [US2] trailing debounce: `infrastructure/fs_worktree_watcher.rs`의 leading-edge rate-limit을 마지막 원시 이벤트 후 500ms 발행 방식으로 교체(std thread + channel, 신규 의존성 없음), T001 perf 로그에 watcher 이벤트 카운트 연결 — T017(c) 통과
+- [x] T021 [US2] frontend 선별 invalidation: `apps/agentic-workbench/src/features/worktree-workspace/ui/worktree-workspace-panel.tsx`의 watcher listener가 활성 탭 기준으로 invalidate 범위를 한정(비활성 query는 inactive invalidation으로 즉시 refetch하지 않음, contracts §5 규칙)
+- [x] T022 [US2] US2 검증: quickstart S2(idle 10분 git 이벤트 0회)·S3(agent 실행 반응성, dist 변경 무시, 마지막 변경 반영, 외부 commit 정상 감지) 수행 + `cargo test`(src-tauri) + `pnpm --filter agentic-workbench test`
 
 **Checkpoint**: US1+US2 — 진입 속도와 세션 지속 비용이 모두 개선된 상태.
 

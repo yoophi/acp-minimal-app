@@ -11,17 +11,9 @@ use crate::domain::{
     worktree_file_provider::WorktreeFileProvider,
 };
 
+use crate::infrastructure::WORKSPACE_EXCLUDED_DIRS;
+
 const MAX_PREVIEW_BYTES: u64 = 512 * 1024;
-const EXCLUDED_DIRS: &[&str] = &[
-    ".git",
-    ".next",
-    ".turbo",
-    "build",
-    "coverage",
-    "dist",
-    "node_modules",
-    "target",
-];
 
 pub struct FsWorktreeFileProvider;
 
@@ -154,7 +146,7 @@ fn should_descend(entry: &DirEntry) -> bool {
         return !name.starts_with('.');
     }
 
-    !name.starts_with('.') && !EXCLUDED_DIRS.contains(&name.as_ref())
+    !name.starts_with('.') && !WORKSPACE_EXCLUDED_DIRS.contains(&name.as_ref())
 }
 
 #[cfg(test)]

@@ -181,6 +181,13 @@ export function WorktreeWorkspacePanel({
   const [selectedTab, setSelectedTab] = useState<WorkspaceTabId>("git");
   const [gitHistoryView, setGitHistoryView] = useState<GitHistoryView>("graph");
   const queryClient = useQueryClient();
+  // watcher 구독을 유지한 채 최신 탭을 참조하기 위한 ref. effect 의존성에 탭을
+  // 넣으면 탭 전환마다 watcher가 재시작되므로 ref로 분리한다.
+  const selectedTabRef = useRef(selectedTab);
+
+  useEffect(() => {
+    selectedTabRef.current = selectedTab;
+  }, [selectedTab]);
 
   useEffect(() => {
     let disposed = false;
@@ -190,14 +197,23 @@ export function WorktreeWorkspacePanel({
       console.error("Failed to start worktree watcher", error);
     });
 
+    // 선별 invalidation(contracts §5): 활성 탭에 필요한 query만 즉시 refetch
+    // 대상으로 만들고, 비활성 query는 stale 표시만 남겨 다음 mount 때 갱신한다.
     listen<WorktreeChangedEvent>(WORKTREE_CHANGED_EVENT, (event) => {
       if (disposed || event.payload.workingDirectory !== worktree.path) {
         return;
       }
 
-      void queryClient.invalidateQueries({ queryKey: worktreeFileQueryKeys.list(worktree.path) });
+      const activeTab = selectedTabRef.current;
+
+      // 파일 목록 전체 rescan(WalkDir)은 파일 트리가 화면에 있을 때만 즉시 필요하다.
+      void queryClient.invalidateQueries({
+        queryKey: worktreeFileQueryKeys.list(worktree.path),
+        refetchType: activeTab === "git" ? "none" : "active",
+      });
       void queryClient.invalidateQueries({
         queryKey: ["worktree-files", "text-file", worktree.path],
+        refetchType: activeTab === "git" ? "none" : "active",
       });
       void queryClient.invalidateQueries({ queryKey: projectQueryKeys.worktreeChanges(worktree.path) });
 
