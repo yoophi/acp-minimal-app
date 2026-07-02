@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 
 import {
   getAgentRunSettings,
@@ -55,6 +56,7 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
     onSuccess: async (saved) => {
       setDraft(createCommandOverrideDraft(saved.commandOverrides));
       await queryClient.invalidateQueries({ queryKey: settingsQueryKey });
+      toast.success("설정을 저장했습니다.");
     },
   });
 
