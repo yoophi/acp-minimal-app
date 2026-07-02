@@ -65,8 +65,8 @@
 
 - **Decision**: git-core `GitHistoryReader`에 두 가지를 적용한다.
   1. `offset > 0`인 페이지에서는 `rev-list --count`와 `for-each-ref`를 생략하고 응답의 `total_count`/`refs`를 옵션(첫 페이지에서만 채움)으로 변경한다. 프론트 `combineGitCommitGraphPages`는 첫 페이지 값을 유지한다.
-  2. cursor 페이지네이션: 요청에 `cursor: Option<String>`(마지막으로 받은 commit hash)을 추가하고, cursor가 있으면 `--skip` 대신 해당 hash 이전부터 조회한다. cursor가 유효하지 않으면(rebase 등) 백엔드가 offset 방식으로 폴백하고 응답에 폴백 표시를 남겨 프론트가 목록을 초기화한다.
-- **Rationale**: 페이지마다 반복되던 O(전체) count·refs 계산과 O(offset) skip 비용을 제거한다. graph는 `--topo-order --all` 조회라 단순 `<hash>^` 지정이 어려우므로, cursor 구현은 `git log --all` 출력에서 cursor hash 이후를 이어받는 방식(조회 창 확장 또는 boundary 지정)을 git-core 내부에서 fixture로 검증하며 확정한다.
+  2. cursor 파라미터: 요청에 `cursor: Option<String>`(마지막으로 받은 commit hash)을 추가한다. **[구현 시 확정]** cursor로 `--skip`을 대체하는 이어받기는 채택하지 않았다 — `--topo-order --all`(graph)과 merge frontier가 있는 history 모두 단일 hash에서 walk를 재개하면 원래 순서와 누락/중복이 생길 수 있다. 대신 cursor는 **이력 재작성 감지** 용도로 사용한다: `rev-parse --verify`로 존재를 확인하고, 무효면 `cursor_invalidated=true`를 반환해 프론트가 누적 목록을 초기화한다. 페이지 조회는 `--skip`을 유지하되, count/refs 생략(위 1)과 limit+1 기반 `has_more` 판정으로 페이지당 비용을 줄인다.
+- **Rationale**: 페이지마다 반복되던 O(전체) count·refs 계산을 제거하고(뒤 페이지 비용의 지배 요인), rebase 후 페이지 혼합이라는 정합성 문제를 cursor 검증으로 해결한다. `--skip`의 O(offset) 순회 비용은 남지만 count 제거 대비 부차적이며, 순서 정합성을 깨지 않는다.
 - **Alternatives considered**:
   - count를 `--count=<limit+1>` 방식의 hasMore 판정으로 대체: totalCount 표시("N / total commits loaded")를 잃는다. 첫 페이지 1회 계산이 UI 요구와 비용의 균형점.
   - libgit2(git2 crate) 전환: git-core가 의도적으로 CLI 기반(git2 미사용)을 유지하고 있어 범위 밖.

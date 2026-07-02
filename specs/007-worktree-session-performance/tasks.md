@@ -155,8 +155,8 @@
 
 **Purpose**: 문서·회귀·경계 검증 마무리.
 
-- [ ] T039 [P] `docs/worktree-session-loading-performance-review.md`의 권장 실행 계획(PR0~PR7)에 적용 결과·실측 수치(baseline 대비)를 갱신
-- [ ] T040 [P] 전체 자동 검증 일괄 실행: `cargo test -p git-core`, src-tauri `cargo test`, `cargo check`(git-explorer 포함), `pnpm --filter @yoophi/git-ui test`, `pnpm --filter @yoophi/workspace-auto-refresh test`, `pnpm --filter agentic-workbench check-types && test`, `pnpm --filter git-explorer check-types` (quickstart 자동 검증 절)
+- [x] T039 [P] `docs/worktree-session-loading-performance-review.md`의 권장 실행 계획(PR0~PR7)에 적용 결과·실측 수치(baseline 대비)를 갱신
+- [x] T040 [P] 전체 자동 검증 일괄 실행: `cargo test -p git-core`, src-tauri `cargo test`, `cargo check`(git-explorer 포함), `pnpm --filter @yoophi/git-ui test`, `pnpm --filter @yoophi/workspace-auto-refresh test`, `pnpm --filter agentic-workbench check-types && test`, `pnpm --filter git-explorer check-types` (quickstart 자동 검증 절)
 - [ ] T041 quickstart S6 회귀 시나리오 수행: commit 상세/diff, Markdown annotation→prompt 전송, 프로젝트 상세 badge/삭제, git-explorer 화면 정상
 - [ ] T042 경계·정리 점검: 앱 간 직접 import 미도입 확인(`grep`으로 `apps/git-explorer` ↔ `apps/agentic-workbench` 상호 참조 검사), 임시 코드·불필요 로그 제거, SC 달성 수치를 `specs/007-worktree-session-performance/baseline.md`에 최종 기록
 
@@ -240,3 +240,17 @@ Task: "T012 frontend 타입/repository 옵션"
 - 각 task 또는 논리 그룹 완료 시 커밋
 - 각 checkpoint에서 멈추고 해당 story를 독립 검증할 수 있다
 - 공유 crate(git-core)/패키지(git-ui, git-graph) 변경 task는 소비 앱 검증까지가 완료 조건(Constitution V)
+
+---
+
+## 구현 후 잔여 항목 (수동 검증 필요)
+
+자동 검증(단위/fixture 테스트, check-types, cross-app cargo check/test)은 모두 통과했다.
+아래 항목은 GUI 앱 실행이 필요해 사람이 quickstart.md 절차로 수행한다.
+
+- [ ] T003 후속: baseline 수치 측정 — PR0 이전 커밋(`d305d46^`)에서 `AW_PERF_LOG=1`로 개선 전 수치를 수집해 `baseline.md`에 기입
+- [ ] T016/T022/T025/T038의 수동 시나리오: quickstart S1~S5 (골격 1초, idle 10분 git 이벤트 0회, agent 실행 반응성, history 미실행, 뒤 페이지 2배 이내)
+- [ ] T041: quickstart S6 회귀 시나리오 (commit 상세/diff, Markdown annotation, 프로젝트 상세 badge/삭제, git-explorer 화면)
+- [ ] T042 잔여: SC 달성 수치를 `baseline.md`에 최종 기록 (경계 검사·코드 정리·자동 검증은 완료)
+
+참고: 기존 dead_code 경고 2건(`record_goal_usage`, `apply_run_usage`)은 본 기능 이전부터 존재하던 것으로 범위 밖이다.
