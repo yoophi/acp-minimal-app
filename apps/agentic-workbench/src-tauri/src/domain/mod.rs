@@ -9,7 +9,6 @@ pub mod git_remote;
 pub mod git_remote_provider;
 pub mod git_worktree;
 pub mod git_worktree_changes;
-pub mod git_worktree_changes_provider;
 pub mod git_worktree_provider;
 pub mod goal;
 pub mod goal_repository;

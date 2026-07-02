@@ -5,6 +5,7 @@ import {
   AlertCircleIcon,
   ChevronDownIcon,
   ChevronRightIcon,
+  FileDiffIcon,
   FileIcon,
   FileTextIcon,
   FolderIcon,
@@ -30,7 +31,10 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { projectQueryKeys } from "@/entities/project/api/query-keys";
-import { getWorktreeChanges } from "@/entities/project/api/git-worktree-repository";
+import {
+  getWorktreeChanges,
+  getWorktreeFileDiff,
+} from "@/entities/project/api/git-worktree-repository";
 import type { GitWorktree } from "@/entities/project/model/git-worktree";
 import { worktreeFileQueryKeys } from "@/entities/worktree-file/api/query-keys";
 import {
@@ -59,6 +63,7 @@ import {
   CommitDetailView,
   HistoryGraphView,
   InfiniteLoadSentinel,
+  WorktreeChangesView,
   combineGitCommitGraphPages,
   refsByTarget,
 } from "@yoophi/git-ui";
@@ -298,6 +303,8 @@ function GitWorkspaceTab({
   const [selectedCommitHash, setSelectedCommitHash] = useState<string | null>(null);
   const [selectedDiffPath, setSelectedDiffPath] = useState<string | null>(null);
   const [staleCommitSelection, setStaleCommitSelection] = useState<StaleSelection | null>(null);
+  const [viewMode, setViewMode] = useState<"commit" | "worktree">("commit");
+  const [worktreeFilePath, setWorktreeFilePath] = useState<string | null>(null);
   const historyQuery = useInfiniteQuery({
     queryKey: worktreeGitQueryKeys.history(worktree.path),
     queryFn: ({ pageParam }) =>
@@ -349,6 +356,13 @@ function GitWorkspaceTab({
       ),
     ...autoRefreshQueryOptions,
   });
+  const worktreeDiffQuery = useQuery({
+    enabled: viewMode === "worktree" && worktreeFilePath !== null,
+    queryKey: worktreeFilePath
+      ? projectQueryKeys.worktreeFileDiff(worktree.path, worktreeFilePath)
+      : projectQueryKeys.worktreeFileDiff(worktree.path, ""),
+    queryFn: () => getWorktreeFileDiff(worktree.path, worktreeFilePath ?? ""),
+  });
   const historyData = useMemo(
     () => combineGitHistoryPages(historyQuery.data?.pages ?? []),
     [historyQuery.data?.pages],
@@ -362,6 +376,7 @@ function GitWorkspaceTab({
   const graphRefs = useMemo(() => refsByTarget(graphData?.refs ?? []), [graphData?.refs]);
 
   function selectCommit(commitHash: string) {
+    setViewMode("commit");
     setSelectedCommitHash(commitHash);
     setSelectedDiffPath(null);
     setStaleCommitSelection(null);
@@ -553,18 +568,72 @@ function GitWorkspaceTab({
       <ResizablePanel id="git-workspace-detail" minSize="320px">
         <div className="flex h-full min-h-0 flex-col">
           <header className="shrink-0 border-b px-4 py-3">
-            <div className="flex min-w-0 items-center gap-2">
-              <GitCommitIcon className="size-4 shrink-0 text-muted-foreground" />
-              <div className="min-w-0">
-                <h2 className="truncate text-sm font-medium">Commit detail</h2>
-                <p className="truncate text-xs text-muted-foreground">
-                  commit 선택 시 변경 파일과 diff를 표시합니다.
-                </p>
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex min-w-0 items-center gap-2">
+                {viewMode === "commit" ? (
+                  <GitCommitIcon className="size-4 shrink-0 text-muted-foreground" />
+                ) : (
+                  <FileDiffIcon className="size-4 shrink-0 text-muted-foreground" />
+                )}
+                <div className="min-w-0">
+                  <h2 className="truncate text-sm font-medium">
+                    {viewMode === "commit" ? "Commit detail" : "Working tree"}
+                  </h2>
+                  <p className="truncate text-xs text-muted-foreground">
+                    {viewMode === "commit"
+                      ? "commit 선택 시 변경 파일과 diff를 표시합니다."
+                      : "아직 커밋되지 않은 변경을 표시합니다."}
+                  </p>
+                </div>
+              </div>
+              <div className="flex shrink-0 rounded-md border p-0.5">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={viewMode === "commit" ? "secondary" : "ghost"}
+                  onClick={() => setViewMode("commit")}
+                >
+                  Commit
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={viewMode === "worktree" ? "secondary" : "ghost"}
+                  onClick={() => setViewMode("worktree")}
+                >
+                  Working tree
+                  {(statusQuery.data?.files.length ?? 0) > 0
+                    ? ` (${statusQuery.data?.files.length})`
+                    : ""}
+                </Button>
               </div>
             </div>
           </header>
           <div className="min-h-0 flex-1 overflow-auto p-4">
-            {selectedCommitHash === null ? (
+            {viewMode === "worktree" ? (
+              statusQuery.isLoading ? (
+                <InlineState icon={Loader2Icon} title="변경사항을 불러오는 중입니다." spinning />
+              ) : statusQuery.isError ? (
+                <InlineState
+                  icon={AlertCircleIcon}
+                  title="변경사항을 불러오지 못했습니다."
+                  description={String(statusQuery.error)}
+                  variant="destructive"
+                />
+              ) : (
+                <WorktreeChangesView
+                  changes={statusQuery.data}
+                  selectedFilePath={worktreeFilePath ?? undefined}
+                  onSelectFile={setWorktreeFilePath}
+                  diff={worktreeDiffQuery.data}
+                  diffLoading={worktreeDiffQuery.isLoading}
+                  diffError={
+                    worktreeDiffQuery.isError ? String(worktreeDiffQuery.error) : undefined
+                  }
+                  diffClassName="max-h-[44svh]"
+                />
+              )
+            ) : selectedCommitHash === null ? (
               <EmptyPanel
                 title="선택된 commit 없음"
                 description="왼쪽 graph 또는 commit list에서 commit을 선택하면 상세 정보를 표시합니다."

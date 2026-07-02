@@ -1,25 +1,8 @@
-export type GitChangedFileGroup = "staged" | "unstaged" | "untracked" | "conflicted";
-
-export type GitWorktreeChanges = {
-  workingDirectory: string;
-  files: GitChangedFile[];
-  stagedCount: number;
-  unstagedCount: number;
-  untrackedCount: number;
-  conflictedCount: number;
-};
-
-export type GitChangedFile = {
-  path: string;
-  oldPath?: string | null;
-  stagedStatus?: string | null;
-  unstagedStatus?: string | null;
-  group: GitChangedFileGroup;
-};
-
-export type GitFileDiff = {
-  path: string;
-  diff: string;
-  truncated: boolean;
-  binary: boolean;
-};
+// 미커밋(working-tree) 변경 타입은 @yoophi/git-graph(정본)로 통일됨.
+export type {
+  GitChangedFileGroup,
+  GitChangedFile,
+  GitFileDiff,
+  GitWorktreeChanges,
+  GitWorktreeFileDiff,
+} from "@yoophi/git-graph";
