@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { FolderGit2Icon } from "lucide-react";
 import {
   Group as ResizablePanelGroup,
@@ -14,6 +14,7 @@ import {
 } from "@/features/agent-run/ui/agent-run-panel";
 import { WorktreeWorkspacePanel } from "@/features/worktree-workspace/ui/worktree-workspace-panel";
 import { Badge } from "@/components/ui/badge";
+import { measureSessionMilestone } from "@/shared/lib/session-perf";
 import { EllipsisPopoverText } from "@/shared/ui/ellipsis-popover-text";
 
 type ProjectWorktreeSessionPageProps = {
@@ -29,6 +30,10 @@ export function ProjectWorktreeSessionPage({
 }: ProjectWorktreeSessionPageProps) {
   const [workspacePromptRequest, setWorkspacePromptRequest] =
     useState<AgentPromptRequest | null>(null);
+
+  useEffect(() => {
+    measureSessionMilestone("session:shell-rendered");
+  }, []);
 
   return (
     <div className="flex h-[calc(100svh-3rem)] min-h-0 flex-col gap-4 overflow-hidden">

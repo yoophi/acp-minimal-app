@@ -18,6 +18,7 @@ pub mod json_project_repository;
 pub mod json_saved_prompt_repository;
 pub mod json_store;
 pub mod noop_acp_session_store;
+pub mod perf_log;
 pub mod permission_broker;
 pub mod tauri_run_event_sink;
 pub mod window_manager;

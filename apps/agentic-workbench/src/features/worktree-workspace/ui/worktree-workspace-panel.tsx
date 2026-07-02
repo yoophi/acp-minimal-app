@@ -95,6 +95,7 @@ import {
   type StaleSelection,
 } from "@yoophi/workspace-auto-refresh";
 import { annotationDialogComponents } from "@/features/worktree-workspace/ui/annotation-dialog-components";
+import { measureSessionMilestone } from "@/shared/lib/session-perf";
 import { cn } from "@/lib/utils";
 import { markdownViewerComponents } from "@/features/worktree-workspace/ui/markdown-viewer-components";
 import { EllipsisPopoverText } from "@/shared/ui/ellipsis-popover-text";
@@ -374,6 +375,18 @@ function GitWorkspaceTab({
   const graphRows = useMemo(() => computeGitGraphRows(graphData?.commits ?? []), [graphData]);
   const maxGraphLane = useMemo(() => getMaxGraphLane(graphRows), [graphRows]);
   const graphRefs = useMemo(() => refsByTarget(graphData?.refs ?? []), [graphData?.refs]);
+  const graphFirstRowMeasuredRef = useRef(false);
+
+  useEffect(() => {
+    graphFirstRowMeasuredRef.current = false;
+  }, [worktree.path]);
+
+  useEffect(() => {
+    if (!graphFirstRowMeasuredRef.current && (graphData?.commits.length ?? 0) > 0) {
+      graphFirstRowMeasuredRef.current = true;
+      measureSessionMilestone("session:graph-first-row");
+    }
+  }, [graphData, worktree.path]);
 
   function selectCommit(commitHash: string) {
     setViewMode("commit");

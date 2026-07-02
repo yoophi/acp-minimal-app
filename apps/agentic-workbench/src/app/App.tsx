@@ -29,6 +29,7 @@ import {
 import { gitStateRefreshQueryOptions } from "@/entities/project/api/query-options";
 import { projectQueryKeys } from "@/entities/project/api/query-keys";
 import { buildProjectDashboard } from "@/entities/project/lib/dashboard-summary";
+import { markSessionRouteEntered } from "@/shared/lib/session-perf";
 import { formatWorktreeWindowTitle } from "@/entities/project/lib/worktree-window-title";
 import type { DashboardAction } from "@/entities/project/model";
 import type { GitWorktree } from "@/entities/project/model/git-worktree";
@@ -380,6 +381,10 @@ function ProjectWorktreeSessionRoute({
   const [searchParams] = useSearchParams();
   const project = projects.find((project) => project.id === projectId);
   const decodedWorktreePath = readWorktreePath(searchParams);
+
+  useEffect(() => {
+    markSessionRouteEntered();
+  }, [projectId, decodedWorktreePath]);
   const worktreesQuery = useQuery({
     queryKey: project
       ? projectQueryKeys.gitWorktrees(project.workingDirectory)

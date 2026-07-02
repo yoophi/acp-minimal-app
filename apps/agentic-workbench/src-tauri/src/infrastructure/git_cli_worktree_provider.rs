@@ -149,8 +149,10 @@ fn push_record(records: &mut Vec<WorktreeRecord>, current: &mut WorktreeRecord) 
 }
 
 fn has_changes(path: &str) -> Result<bool, String> {
+    // --no-optional-locks: status가 .git/index를 다시 쓰지 않게 해 worktree
+    // watcher와의 되먹임을 차단한다(specs/007 research R2).
     let output = Command::new("git")
-        .args(["-C", path, "status", "--porcelain"])
+        .args(["--no-optional-locks", "-C", path, "status", "--porcelain"])
         .output()
         .map_err(|error| format!("Failed to run git status: {error}"))?;
 

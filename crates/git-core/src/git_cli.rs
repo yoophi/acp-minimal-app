@@ -476,8 +476,17 @@ pub struct GitCliWorktreeStatusReader;
 
 impl GitWorktreeStatusReader for GitCliWorktreeStatusReader {
     fn status(&self, repository_path: &str) -> Result<GitWorktreeChanges, String> {
+        // --no-optional-locks: status가 .git/index를 다시 쓰지 않게 해 파일
+        // watcher 기반 소비 앱의 되먹임을 차단한다(AW specs/007 research R2).
         let output = Command::new("git")
-            .args(["-C", repository_path, "status", "--porcelain=v1", "-uall"])
+            .args([
+                "--no-optional-locks",
+                "-C",
+                repository_path,
+                "status",
+                "--porcelain=v1",
+                "-uall",
+            ])
             .output()
             .map_err(|error| format!("Failed to run git status: {error}"))?;
 
