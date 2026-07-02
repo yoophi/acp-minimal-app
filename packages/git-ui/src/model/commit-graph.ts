@@ -33,6 +33,9 @@ export function combineGitCommitGraphPages(pages: GitCommitGraph[]) {
     page: {
       ...lastPage.page,
       offset: 0,
+      // totalCount와 refs는 첫 페이지에서만 계산된다(AW specs/007 R8).
+      // 후속 페이지의 null이 첫 페이지 값을 덮어쓰지 않게 유지한다.
+      totalCount: lastPage.page.totalCount ?? firstPage.page.totalCount,
     },
   };
 }

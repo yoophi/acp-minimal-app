@@ -121,31 +121,31 @@
 
 ### Tests for User Story 4 (constitution-required) ⚠️
 
-- [ ] T026 [P] [US4] `crates/git-core/src/git_cli.rs` 테스트 모듈에 fixture 테스트 추가(구현 전 FAIL 확인): cursor 유효 시 이어받기, cursor 무효 시 `cursor_invalidated=true` + offset 폴백, offset>0/cursor 요청에서 count·refs 생략(`total_count=None`, refs 빈 배열)
-- [ ] T027 [P] [US4] `apps/agentic-workbench/src-tauri/src/infrastructure/fs_worktree_file_provider.rs` 테스트 모듈에 scope 테스트 추가(구현 전 FAIL 확인): `kind=markdown` 필터(조상 디렉터리 포함), `dir`+`depth=1` 직계 조회, `dir` 경로 탈출 거부
+- [x] T026 [P] [US4] `crates/git-core/src/git_cli.rs` 테스트 모듈에 fixture 테스트 추가(구현 전 FAIL 확인): cursor 유효 시 이어받기, cursor 무효 시 `cursor_invalidated=true` + offset 폴백, offset>0/cursor 요청에서 count·refs 생략(`total_count=None`, refs 빈 배열)
+- [x] T027 [P] [US4] `apps/agentic-workbench/src-tauri/src/infrastructure/fs_worktree_file_provider.rs` 테스트 모듈에 scope 테스트 추가(구현 전 FAIL 확인): `kind=markdown` 필터(조상 디렉터리 포함), `dir`+`depth=1` 직계 조회, `dir` 경로 탈출 거부
 
 ### Implementation for User Story 4 — git-core 페이지네이션 (R8, R9)
 
-- [ ] T028 [US4] `crates/git-core/src/domain.rs`: `GitCommitPage`/`GitGraphPage`의 `total_count`를 `Option<usize>`로, `cursor_invalidated: Option<bool>` 추가(serde 하위 호환 유지)
-- [ ] T029 [US4] `crates/git-core/src/ports.rs`+`git_cli.rs`: `GitHistoryReader::list_history`/`get_commit_graph`에 `cursor: Option<&str>` 추가, cursor 기반 이어받기·무효 시 offset 폴백·count/refs 첫 페이지 한정 구현 — T026 통과
-- [ ] T030 [US4] `crates/git-core/src/git_cli.rs`: 첫 페이지의 `head_hash`/`log`/`refs`/`count` 조회를 `std::thread::scope`로 병렬화, 기존 테스트 전체 통과 확인
-- [ ] T031 [US4] 소비 앱 어댑터 갱신: `apps/agentic-workbench/src-tauri/src/infrastructure/git_cli_worktree_git_provider.rs`·`application/worktree_git_service.rs`·`inbound/tauri_commands.rs`에 cursor 파라미터 전달, `apps/git-explorer/src-tauri/src`의 `GitHistoryReader` 호출 지점을 새 시그니처(기본 `None`)로 갱신 후 `cargo check -p git-explorer`(crate 경로 기준) 통과
+- [x] T028 [US4] `crates/git-core/src/domain.rs`: `GitCommitPage`/`GitGraphPage`의 `total_count`를 `Option<usize>`로, `cursor_invalidated: Option<bool>` 추가(serde 하위 호환 유지)
+- [x] T029 [US4] `crates/git-core/src/ports.rs`+`git_cli.rs`: `GitHistoryReader::list_history`/`get_commit_graph`에 `cursor: Option<&str>` 추가, cursor 기반 이어받기·무효 시 offset 폴백·count/refs 첫 페이지 한정 구현 — T026 통과
+- [x] T030 [US4] `crates/git-core/src/git_cli.rs`: 첫 페이지의 `head_hash`/`log`/`refs`/`count` 조회를 `std::thread::scope`로 병렬화, 기존 테스트 전체 통과 확인
+- [x] T031 [US4] 소비 앱 어댑터 갱신: `apps/agentic-workbench/src-tauri/src/infrastructure/git_cli_worktree_git_provider.rs`·`application/worktree_git_service.rs`·`inbound/tauri_commands.rs`에 cursor 파라미터 전달, `apps/git-explorer/src-tauri/src`의 `GitHistoryReader` 호출 지점을 새 시그니처(기본 `None`)로 갱신 후 `cargo check -p git-explorer`(crate 경로 기준) 통과
 
 ### Implementation for User Story 4 — frontend 페이지네이션 소비
 
-- [ ] T032 [US4] TS 타입/모델: `packages/git-graph/src`의 page 타입에 `totalCount?`/`cursorInvalidated?` 반영, `packages/git-ui/src/model/commit-graph.ts`의 `combineGitCommitGraphPages`가 첫 페이지 `totalCount`/`refs`를 유지하도록 수정 + 패키지 단위 테스트 갱신
-- [ ] T033 [US4] `apps/agentic-workbench/src/entities/worktree-git/api/worktree-git-repository.ts`에 cursor 파라미터 추가, `features/worktree-workspace/ui/worktree-workspace-panel.tsx`의 infinite query가 `getNextPageParam`으로 마지막 commit hash를 cursor로 전달하고 `cursorInvalidated` 응답 시 목록을 초기화하도록 수정
+- [x] T032 [US4] TS 타입/모델: `packages/git-graph/src`의 page 타입에 `totalCount?`/`cursorInvalidated?` 반영, `packages/git-ui/src/model/commit-graph.ts`의 `combineGitCommitGraphPages`가 첫 페이지 `totalCount`/`refs`를 유지하도록 수정 + 패키지 단위 테스트 갱신
+- [x] T033 [US4] `apps/agentic-workbench/src/entities/worktree-git/api/worktree-git-repository.ts`에 cursor 파라미터 추가, `features/worktree-workspace/ui/worktree-workspace-panel.tsx`의 infinite query가 `getNextPageParam`으로 마지막 commit hash를 cursor로 전달하고 `cursorInvalidated` 응답 시 목록을 초기화하도록 수정
 
 ### Implementation for User Story 4 — 파일 목록 lazy loading (R10)
 
-- [ ] T034 [US4] backend scope 구현: `apps/agentic-workbench/src-tauri/src/domain/worktree_file_provider.rs` port에 scope 파라미터 추가, `infrastructure/fs_worktree_file_provider.rs`(markdown 필터·depth·dir, 기존 `resolve_worktree_path` 검증 재사용), `application/worktree_file_service.rs`, `inbound/tauri_commands.rs`의 `list_worktree_files`에 옵션 연결 — T027 통과
-- [ ] T035 [US4] frontend lazy 파일 트리: `apps/agentic-workbench/src/entities/worktree-file/api/worktree-file-repository.ts`에 scope 옵션 추가, `features/worktree-workspace/ui/worktree-workspace-panel.tsx`의 Markdown 탭은 `kind: "markdown"`, Files 탭은 `dir`+`depth: 1` 폴더 펼침 조회로 전환(query key에 scope 포함)
+- [x] T034 [US4] backend scope 구현: `apps/agentic-workbench/src-tauri/src/domain/worktree_file_provider.rs` port에 scope 파라미터 추가, `infrastructure/fs_worktree_file_provider.rs`(markdown 필터·depth·dir, 기존 `resolve_worktree_path` 검증 재사용), `application/worktree_file_service.rs`, `inbound/tauri_commands.rs`의 `list_worktree_files`에 옵션 연결 — T027 통과
+- [x] T035 [US4] frontend lazy 파일 트리: `apps/agentic-workbench/src/entities/worktree-file/api/worktree-file-repository.ts`에 scope 옵션 추가, `features/worktree-workspace/ui/worktree-workspace-panel.tsx`의 Markdown 탭은 `kind: "markdown"`, Files 탭은 `dir`+`depth: 1` 폴더 펼침 조회로 전환(query key에 scope 포함)
 
 ### Implementation for User Story 4 — virtualization (R11)
 
-- [ ] T036 [P] [US4] `packages/git-ui/src`에 고정 높이 row + overscan 방식의 virtualization hook을 추가하고 `HistoryGraphView`/`CommitListView`에 적용(외부 의존성 없이, `VirtualizedRunTimeline` 패턴 참고) + 단위 테스트
-- [ ] T037 [P] [US4] Storybook: 1,000+ row graph/list 스토리를 git-ui 스토리(organisms)에 추가해 virtualization 동작을 시각 확인
-- [ ] T038 [US4] US4 검증: quickstart S5 수행(뒤 페이지 2배 이내, count/refs 미반복, DOM row 제한, rebase 폴백, 대형 저장소 탭 진입) + `cargo test -p git-core` + `pnpm --filter @yoophi/git-ui test` + 양쪽 앱 check-types
+- [x] T036 [P] [US4] `packages/git-ui/src`에 고정 높이 row + overscan 방식의 virtualization hook을 추가하고 `HistoryGraphView`/`CommitListView`에 적용(외부 의존성 없이, `VirtualizedRunTimeline` 패턴 참고) + 단위 테스트
+- [x] T037 [P] [US4] Storybook: 1,000+ row graph/list 스토리를 git-ui 스토리(organisms)에 추가해 virtualization 동작을 시각 확인
+- [x] T038 [US4] US4 검증: quickstart S5 수행(뒤 페이지 2배 이내, count/refs 미반복, DOM row 제한, rebase 폴백, 대형 저장소 탭 진입) + `cargo test -p git-core` + `pnpm --filter @yoophi/git-ui test` + 양쪽 앱 check-types
 
 **Checkpoint**: 모든 user story 완료 — 대형 저장소 시나리오까지 독립 검증.
 

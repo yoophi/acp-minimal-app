@@ -2,6 +2,7 @@ import type { GitCommitGraph, GitGraphCommit, GitGraphRef, GitGraphRow } from "@
 
 import { GraphCell } from "./graph-cell";
 import { InfiniteLoadSentinel } from "./infinite-load-sentinel";
+import { useVirtualRows } from "./use-virtual-rows";
 
 const GRID_COLUMNS = "grid-cols-[auto_minmax(0,1fr)_9rem_12rem]";
 
@@ -30,6 +31,13 @@ export function HistoryGraphView({
   onLoadMore,
 }: HistoryGraphViewProps) {
   const rowHeight = graph.layoutHints.rowHeight || 32;
+  // 로드된 row 전체를 그리지 않고 viewport 근처만 렌더한다(AW specs/007 R11).
+  const { containerRef, startIndex, endIndex, totalHeight } = useVirtualRows({
+    rowCount: graph.commits.length,
+    rowHeight,
+  });
+  const visibleCommits =
+    endIndex >= startIndex ? graph.commits.slice(startIndex, endIndex + 1) : [];
 
   return (
     <div className="overflow-hidden rounded-md border">
@@ -41,8 +49,8 @@ export function HistoryGraphView({
         <span>Author</span>
         <span>Date</span>
       </div>
-      <div>
-        {graph.commits.map((commit) => (
+      <div className="relative" ref={containerRef} style={{ height: totalHeight }}>
+        {visibleCommits.map((commit, index) => (
           <HistoryGraphRow
             commit={commit}
             graphRefs={graphRefs.get(commit.hash) ?? []}
@@ -52,6 +60,7 @@ export function HistoryGraphView({
             maxGraphLane={maxGraphLane}
             onSelectCommit={onSelectCommit}
             rowHeight={rowHeight}
+            top={(startIndex + index) * rowHeight}
           />
         ))}
       </div>
@@ -61,7 +70,7 @@ export function HistoryGraphView({
           isFetchingNextPage={isFetchingNextPage}
           onLoadMore={onLoadMore}
         />
-        {graph.commits.length} / {graph.page.totalCount} commits loaded
+        {graph.commits.length} / {graph.page.totalCount ?? graph.commits.length} commits loaded
         {hasNextPage ? " · more commits available" : ""}
         {isFetchingNextPage ? " · loading older commits" : ""}
       </div>
@@ -77,6 +86,7 @@ function HistoryGraphRow({
   maxGraphLane,
   onSelectCommit,
   rowHeight,
+  top,
 }: {
   commit: GitGraphCommit;
   graphRefs: GitGraphRef[];
@@ -85,14 +95,15 @@ function HistoryGraphRow({
   maxGraphLane: number;
   onSelectCommit: (commitHash: string) => void;
   rowHeight: number;
+  top: number;
 }) {
   return (
     <button
       aria-label={`Commit ${commit.shortHash} by ${commit.author}: ${commit.message}`}
-      className={`grid w-full ${GRID_COLUMNS} items-center border-b px-2 text-left text-sm last:border-b-0 hover:bg-muted/50 data-[selected=true]:bg-muted`}
+      className={`absolute inset-x-0 grid w-full ${GRID_COLUMNS} items-center border-b px-2 text-left text-sm hover:bg-muted/50 data-[selected=true]:bg-muted`}
       data-selected={isSelected}
       onClick={() => onSelectCommit(commit.hash)}
-      style={{ minHeight: rowHeight }}
+      style={{ height: rowHeight, top }}
       type="button"
     >
       <GraphCell maxLane={maxGraphLane} row={graphRow} rowHeight={rowHeight} />

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertCircleIcon,
   ChevronDownIcon,
@@ -66,6 +66,7 @@ import {
   WorktreeChangesView,
   combineGitCommitGraphPages,
   refsByTarget,
+  useVirtualRows,
 } from "@yoophi/git-ui";
 import {
   formatAnnotationsForAgent,
@@ -123,6 +124,9 @@ type AnnotationDraftTarget =
       anchors: AnnotationAnchor[];
       text: string;
     };
+
+// CommitListView 고정 row 높이(virtualization용). 두 줄 레이아웃 기준.
+const COMMIT_LIST_ROW_HEIGHT = 56;
 
 const workspaceTabs: Array<{
   id: WorkspaceTabId;
@@ -331,19 +335,27 @@ function GitWorkspaceTab({
   const [staleCommitSelection, setStaleCommitSelection] = useState<StaleSelection | null>(null);
   const [viewMode, setViewMode] = useState<"commit" | "worktree">("commit");
   const [worktreeFilePath, setWorktreeFilePath] = useState<string | null>(null);
+  const gitQueryClient = useQueryClient();
   // 선택된 view의 query만 실행한다(specs/007 research R6). 반대 view는 전환
-  // 시점에 로드되고, 이미 캐시가 있으면 즉시 표시된다.
+  // 시점에 로드되고, 이미 캐시가 있으면 즉시 표시된다. 후속 페이지는 마지막
+  // commit hash를 cursor로 넘겨 이력 재작성을 감지한다(R8).
   const historyQuery = useInfiniteQuery({
     enabled: historyView === "list",
     queryKey: worktreeGitQueryKeys.history(worktree.path),
     queryFn: ({ pageParam }) =>
       listWorktreeGitHistory(worktree.path, {
         maxCount: 100,
-        offset: pageParam,
+        offset: pageParam.offset,
+        cursor: pageParam.cursor,
       }),
-    initialPageParam: 0,
+    initialPageParam: { offset: 0 } as { offset: number; cursor?: string },
     getNextPageParam: (lastPage) =>
-      lastPage.page.hasMore ? lastPage.page.offset + lastPage.commits.length : undefined,
+      lastPage.page.hasMore
+        ? {
+            offset: lastPage.page.offset + lastPage.commits.length,
+            cursor: lastPage.commits[lastPage.commits.length - 1]?.hash,
+          }
+        : undefined,
     ...autoRefreshQueryOptions,
   });
   const graphQuery = useInfiniteQuery({
@@ -352,13 +364,44 @@ function GitWorkspaceTab({
     queryFn: ({ pageParam }) =>
       getWorktreeGitGraph(worktree.path, {
         maxCount: 300,
-        offset: pageParam,
+        offset: pageParam.offset,
+        cursor: pageParam.cursor,
       }),
-    initialPageParam: 0,
+    initialPageParam: { offset: 0 } as { offset: number; cursor?: string },
     getNextPageParam: (lastPage) =>
-      lastPage.page.hasMore ? lastPage.page.offset + lastPage.commits.length : undefined,
+      lastPage.page.hasMore
+        ? {
+            offset: lastPage.page.offset + lastPage.commits.length,
+            cursor: lastPage.commits[lastPage.commits.length - 1]?.hash,
+          }
+        : undefined,
     ...autoRefreshQueryOptions,
   });
+
+  // cursor가 무효(rebase 등)로 판정되면 누적 페이지를 버리고 처음부터 다시
+  // 로드한다(contracts §3, data-model cursorInvalidated).
+  const historyCursorInvalidated = historyQuery.data?.pages.some(
+    (page) => page.page.cursorInvalidated,
+  );
+  const graphCursorInvalidated = graphQuery.data?.pages.some(
+    (page) => page.page.cursorInvalidated,
+  );
+
+  useEffect(() => {
+    if (historyCursorInvalidated) {
+      void gitQueryClient.resetQueries({
+        queryKey: worktreeGitQueryKeys.history(worktree.path),
+      });
+    }
+  }, [gitQueryClient, historyCursorInvalidated, worktree.path]);
+
+  useEffect(() => {
+    if (graphCursorInvalidated) {
+      void gitQueryClient.resetQueries({
+        queryKey: worktreeGitQueryKeys.graph(worktree.path),
+      });
+    }
+  }, [gitQueryClient, graphCursorInvalidated, worktree.path]);
   const statusQuery = useQuery({
     queryKey: projectQueryKeys.worktreeChanges(worktree.path),
     queryFn: () => getWorktreeChanges(worktree.path),
@@ -734,32 +777,45 @@ function CommitListView({
   isFetchingNextPage: boolean;
   onLoadMore: () => void;
 }) {
+  // 로드된 commit 전체를 그리지 않고 viewport 근처 row만 렌더한다(specs/007 R11).
+  const { containerRef, startIndex, endIndex, totalHeight } = useVirtualRows({
+    rowCount: commits.length,
+    rowHeight: COMMIT_LIST_ROW_HEIGHT,
+  });
+  const visibleCommits = endIndex >= startIndex ? commits.slice(startIndex, endIndex + 1) : [];
+
   return (
     <div className="overflow-hidden rounded-md border text-sm">
-      {commits.map((commit) => (
-        <button
-          key={commit.hash}
-          type="button"
-          className="grid w-full grid-cols-[5rem_minmax(0,1fr)] gap-2 border-b px-3 py-2 text-left last:border-b-0 hover:bg-muted/50 data-[selected=true]:bg-muted"
-          data-selected={commit.hash === selectedCommitHash}
-          onClick={() => onSelectCommit(commit.hash)}
-        >
-          <span className="font-mono text-xs text-muted-foreground">{commit.hash.slice(0, 8)}</span>
-          <span className="min-w-0">
-            <span className="block truncate">{commit.message}</span>
-            <span className="block truncate text-xs text-muted-foreground">
-              {commit.author} · {formatDate(commit.date)}
+      <div className="relative" ref={containerRef} style={{ height: totalHeight }}>
+        {visibleCommits.map((commit, index) => (
+          <button
+            key={commit.hash}
+            type="button"
+            className="absolute inset-x-0 grid w-full grid-cols-[5rem_minmax(0,1fr)] items-center gap-2 overflow-hidden border-b px-3 text-left hover:bg-muted/50 data-[selected=true]:bg-muted"
+            style={{
+              height: COMMIT_LIST_ROW_HEIGHT,
+              top: (startIndex + index) * COMMIT_LIST_ROW_HEIGHT,
+            }}
+            data-selected={commit.hash === selectedCommitHash}
+            onClick={() => onSelectCommit(commit.hash)}
+          >
+            <span className="font-mono text-xs text-muted-foreground">{commit.hash.slice(0, 8)}</span>
+            <span className="min-w-0">
+              <span className="block truncate">{commit.message}</span>
+              <span className="block truncate text-xs text-muted-foreground">
+                {commit.author} · {formatDate(commit.date)}
+              </span>
             </span>
-          </span>
-        </button>
-      ))}
+          </button>
+        ))}
+      </div>
       <div className="border-t px-3 py-2 text-xs text-muted-foreground">
         <InfiniteLoadSentinel
           hasNextPage={hasNextPage}
           isFetchingNextPage={isFetchingNextPage}
           onLoadMore={onLoadMore}
         />
-        {commits.length} / {page.totalCount} commits loaded
+        {commits.length} / {page.totalCount ?? commits.length} commits loaded
         {isFetchingNextPage ? " · loading older commits" : ""}
       </div>
     </div>
@@ -768,11 +824,22 @@ function CommitListView({
 
 function FileWorkspaceTab({ worktree }: { worktree: GitWorktree }) {
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(() => new Set());
+  // 한 번이라도 펼친 디렉터리의 목록 query는 유지한다. 접었다 다시 펼칠 때
+  // 캐시로 즉시 표시되고, stale 파일 판정에도 계속 쓰인다(specs/007 R10).
+  const [loadedDirs, setLoadedDirs] = useState<string[]>([]);
   const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null);
+  // 디렉터리 단위 lazy loading: 루트 직계만 먼저 읽고, 폴더 펼침 시 하위를 읽는다.
   const filesQuery = useQuery({
-    queryKey: worktreeFileQueryKeys.list(worktree.path),
-    queryFn: () => listWorktreeFiles(worktree.path),
+    queryKey: worktreeFileQueryKeys.listScope(worktree.path, { depth: 1 }),
+    queryFn: () => listWorktreeFiles(worktree.path, { depth: 1 }),
     ...autoRefreshQueryOptions,
+  });
+  const dirQueries = useQueries({
+    queries: loadedDirs.map((dir) => ({
+      queryKey: worktreeFileQueryKeys.listScope(worktree.path, { dir, depth: 1 }),
+      queryFn: () => listWorktreeFiles(worktree.path, { dir, depth: 1 }),
+      ...autoRefreshQueryOptions,
+    })),
   });
   const previewQuery = useQuery({
     enabled: selectedFilePath !== null,
@@ -782,24 +849,53 @@ function FileWorkspaceTab({ worktree }: { worktree: GitWorktree }) {
     queryFn: () => readWorktreeTextFile(worktree.path, selectedFilePath ?? ""),
     ...autoRefreshQueryOptions,
   });
+  const loadedEntries = useMemo(() => {
+    const entries = [...(filesQuery.data ?? [])];
+    for (const dirQuery of dirQueries) {
+      entries.push(...(dirQuery.data ?? []));
+    }
+    const seen = new Set<string>();
+    return entries
+      .filter((entry) => {
+        if (seen.has(entry.relativePath)) {
+          return false;
+        }
+        seen.add(entry.relativePath);
+        return true;
+      })
+      .sort((left, right) =>
+        left.relativePath
+          .toLowerCase()
+          .localeCompare(right.relativePath.toLowerCase()),
+      );
+    // dirQueries 배열 identity는 렌더마다 바뀌므로 data 스냅샷으로 의존성을 좁힌다.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filesQuery.data, ...dirQueries.map((dirQuery) => dirQuery.data)]);
   const rows = useMemo(
-    () => buildFileTreeRows(filesQuery.data ?? [], expandedFolders),
-    [filesQuery.data, expandedFolders],
+    () => buildFileTreeRows(loadedEntries, expandedFolders),
+    [loadedEntries, expandedFolders],
   );
-  const selectedFile = filesQuery.data?.find(
+  const selectedFile = loadedEntries.find(
     (entry) => !entry.isDir && entry.relativePath === selectedFilePath,
   );
   const staleFileSelection = useMemo(() => {
     if (!filesQuery.data || selectedFilePath === null) {
       return null;
     }
+    // lazy loading에서는 로드된 디렉터리만 판단 근거가 된다. 부모 디렉터리가
+    // 로드되지 않았다면 파일 존재 여부를 알 수 없으므로 stale로 보지 않는다.
+    const parentDir = selectedFilePath.split("/").slice(0, -1).join("/");
+    const isParentLoaded = parentDir === "" || loadedDirs.includes(parentDir);
+    if (!isParentLoaded) {
+      return null;
+    }
     return findStaleFileSelection({
       selectedPath: selectedFilePath,
-      availablePaths: filesQuery.data
+      availablePaths: loadedEntries
         .filter((entry) => !entry.isDir)
         .map((entry) => entry.relativePath),
     });
-  }, [filesQuery.data, selectedFilePath]);
+  }, [filesQuery.data, loadedDirs, loadedEntries, selectedFilePath]);
 
   function selectFile(path: string) {
     setSelectedFilePath(path);
@@ -815,6 +911,7 @@ function FileWorkspaceTab({ worktree }: { worktree: GitWorktree }) {
       }
       return next;
     });
+    setLoadedDirs((current) => (current.includes(path) ? current : [...current, path]));
   }
 
   return (
@@ -827,7 +924,7 @@ function FileWorkspaceTab({ worktree }: { worktree: GitWorktree }) {
               <div className="min-w-0">
                 <h2 className="truncate text-sm font-medium">File tree</h2>
                 <p className="truncate text-xs text-muted-foreground">
-                  {filesQuery.data?.length ?? 0} visible items
+                  {loadedEntries.length} visible items
                 </p>
                 <div className="mt-1 flex items-center gap-1.5">
                   {filesQuery.isFetching && !filesQuery.isLoading ? (
@@ -966,9 +1063,11 @@ function MarkdownWorkspaceTab({
     top: number;
   } | null>(null);
   const [editingAnnotationId, setEditingAnnotationId] = useState<string | null>(null);
+  // markdown 필터는 백엔드(scope)에서 수행되어 전체 파일 목록을 받지 않는다.
+  // 프론트 필터는 응답 검증 겸 안전망으로 유지한다(specs/007 R10).
   const filesQuery = useQuery({
-    queryKey: worktreeFileQueryKeys.list(worktree.path),
-    queryFn: () => listWorktreeFiles(worktree.path),
+    queryKey: worktreeFileQueryKeys.listScope(worktree.path, { kind: "markdown" }),
+    queryFn: () => listWorktreeFiles(worktree.path, { kind: "markdown" }),
     ...autoRefreshQueryOptions,
   });
   const markdownEntries = useMemo(
@@ -1765,6 +1864,8 @@ function combineGitHistoryPages(pages: Array<{ commits: GitCommitSummary[]; page
       offset: 0,
       limit: commits.length,
       hasMore: lastPage.hasMore,
+      // totalCount는 첫 페이지에서만 계산된다(specs/007 R8).
+      totalCount: lastPage.totalCount ?? pages[0].page.totalCount,
     },
   };
 }

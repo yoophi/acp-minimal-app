@@ -30,7 +30,7 @@ use crate::{
         run::{AgentRun, AgentRunRequest, PermissionMode, RalphLoopRequest},
         saved_prompt::{SavedPrompt, SavedPromptDraft},
         worktree_change::WorktreeChange,
-        worktree_file::{WorktreeFileEntry, WorktreeTextFile},
+        worktree_file::{WorktreeFileEntry, WorktreeFileListScope, WorktreeTextFile},
         worktree_git::{
             GitCommitDetail, GitCommitGraph, GitCommitHistory, GitFileDiff as WorktreeGitFileDiff,
         },
@@ -368,9 +368,14 @@ pub async fn get_worktree_file_diff(
 #[tauri::command]
 pub async fn list_worktree_files(
     working_directory: String,
+    scope: Option<WorktreeFileListScope>,
 ) -> Result<Vec<WorktreeFileEntry>, String> {
     run_blocking_command("list_worktree_files", move || {
-        worktree_file_service::list_worktree_files(&FsWorktreeFileProvider, working_directory)
+        worktree_file_service::list_worktree_files(
+            &FsWorktreeFileProvider,
+            working_directory,
+            scope,
+        )
     })
     .await
 }
@@ -433,6 +438,7 @@ pub async fn list_worktree_git_history(
     working_directory: String,
     max_count: Option<usize>,
     offset: Option<usize>,
+    cursor: Option<String>,
 ) -> Result<GitCommitHistory, String> {
     run_blocking_command("list_worktree_git_history", move || {
         worktree_git_service::list_worktree_git_history(
@@ -440,6 +446,7 @@ pub async fn list_worktree_git_history(
             working_directory,
             max_count,
             offset,
+            cursor,
         )
     })
     .await
@@ -450,6 +457,7 @@ pub async fn get_worktree_git_graph(
     working_directory: String,
     max_count: Option<usize>,
     offset: Option<usize>,
+    cursor: Option<String>,
 ) -> Result<GitCommitGraph, String> {
     run_blocking_command("get_worktree_git_graph", move || {
         worktree_git_service::get_worktree_git_graph(
@@ -457,6 +465,7 @@ pub async fn get_worktree_git_graph(
             working_directory,
             max_count,
             offset,
+            cursor,
         )
     })
     .await
